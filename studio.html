@@ -3,7 +3,11 @@
 <head>
 <meta charset="utf-8">
 <title>Clawd studio</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Permanent+Marker&display=block">
+<style>
+  @font-face { font-family: 'Permanent Marker'; font-style: normal; font-weight: 400; font-display: block; src: url(fonts/permanent-marker-latin.woff2) format('woff2'); }
+  @font-face { font-family: 'Ma Shan Zheng'; font-display: block; src: url(fonts/MaShanZheng-Regular.ttf) format('truetype'); }
+  @font-face { font-family: 'ZCOOL KuaiLe'; font-display: block; src: url(fonts/ZCOOLKuaiLe-Regular.ttf) format('truetype'); }
+</style>
 <style>
   html, body { margin: 0; background: #1b1820; color: #eee; font: 13px system-ui, sans-serif; }
   main { padding: 12px; display: grid; gap: 8px; }
@@ -25,7 +29,12 @@
 <script src="src/config.js"></script>
 <script src="src/core.js"></script>
 <script src="src/clawd.js"></script>
+<script src="src/fx.js"></script>
+<script src="src/karaoke.js"></script>
+<script src="src/cast_heroes.js"></script>
+<script src="src/cast_robots.js"></script>
 <script src="src/timeline.js"></script>
+<script src="src/cast_tao.js"></script>
 <!-- reference sheets (standalone loops) -->
 <script src="src/sheets.js"></script>
 <!-- your video: add a script per scene file, in order -->

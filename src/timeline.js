@@ -21,6 +21,7 @@ function drawWorld(t) {
     CAM = null;
   }
   flushLetters();
+  if (!window.LOOP && typeof LY !== 'undefined') karaoke(t);   // the lyric band, when the video has lyrics (LY)
 }
 
 function placeholder(t) {

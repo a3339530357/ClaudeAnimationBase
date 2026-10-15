@@ -60,7 +60,8 @@ function tintCols(o) {
 //   face:   eyes (a name, or [left, right] for mismatched eyes), mouth, lookX / lookY (-1..1), squint 0..1, blush 0..1,
 //           gloom 0..1 (dark forehead with gloom lines), lid 0..1 (lunchbox mouth, front view only), seed (blink timing)
 //   colour: col / dk / lt, or tint + tintK
-//   extras: hat, emote + emoteK (0..1 pop) + emoteAge (s since it appeared), draw(u, sw), armL(u, sw), armR(u, sw)
+//   extras: hat, emote + emoteK (0..1 pop) + emoteAge (s since it appeared), draw(u, sw), armL(u, sw), armR(u, sw),
+//           back(u, sw, view): drawn behind the whole body (scarves, capes)
 //   boil:   boilKey (a stable id for its boil seeds; defaults to call order, so set it if characters come and go mid-shot)
 function clawd(x, y, u, o = {}) {
   // each part boils from its own seed (see boilSeed), so a moving arm never re-boils the body, or the next character
@@ -100,7 +101,8 @@ function clawd(x, y, u, o = {}) {
     pop();
   };
 
-  // arms behind, then legs (under the body), then the body, then arms in front
+  // things behind the whole body (a scarf, a cape), in body space, then arms behind, legs, the body, arms in front
+  if (o.back) { rs('back'); o.back(u, sw, V); }
   V.arms.filter(a => a[3] !== 1).forEach(arm);
   if (!o.noLegs) V.legs.forEach(([lx, isFar], i) => {
     rs('leg' + i);
@@ -406,6 +408,20 @@ function hat(u, h, sw) {
   } else if (h === 'headphones') {
     inkLine(P([[-5.1, -5.8], [-4.6, -9.4], [0, -10.6], [4.6, -9.4], [5.1, -5.8]]), sw * 2.4, PAL.ink, 'ink', .6);
     for (const s of [-1, 1]) paint(rrPts((s < 0 ? -6.1 : 4.6) * u, -7.4 * u, 1.5 * u, 2.8 * u, .6 * u), { wash: PAL.violet, fill: PAL.rose, fillOp: 50, ink: PAL.ink, sw: sw * .7 });
+  } else if (h === 'electro') {   // 电击小子: blue dome helmet, white visor stripe, a yellow lightning crest
+    const d = []; for (let i = 0; i <= 14; i++) { const a = Math.PI + i / 14 * Math.PI; d.push([Math.cos(a) * 4.4 * u, -7.9 * u + Math.sin(a) * 3.1 * u]); }
+    paint(P([[-.5, -10.4], [-1.5, -12.6], [-.3, -12.4], [-.9, -14.6], [1.5, -11.6], [.3, -11.8], [.9, -10.6]]), { wash: '#FFD84A', ink: PAL.ink, sw: sw * .8 });
+    paint(d, { wash: '#2F6FD8', ink: PAL.ink, sw: sw * .8 });
+    paint(rectPts(-4.3 * u, -9.5 * u, 8.6 * u, .7 * u), { wash: PAL.cream, ink: null });
+    paint(rectPts(-5.2 * u, -8.5 * u, 10.4 * u, .85 * u), { wash: '#1F4FA8', ink: PAL.ink, sw: sw * .7 });
+  } else if (h === 'chef') {
+    for (const [cx, r] of [[-1.9, 1.5], [1.9, 1.5], [0, 1.8]]) paint(ellPts(cx * u, -11.6 * u, r * u, r * u, 14), { wash: '#FFFDF6', ink: PAL.ink, sw: sw * .6 });
+    paint(rectPts(-3 * u, -11.2 * u, 6 * u, 3 * u), { wash: '#FFFDF6', ink: PAL.ink, sw: sw * .7 });
+  } else if (h === 'bigbow') {   // a big red bow sitting on the top edge, off to one side (小桃)
+    const bx = 2.3 * u, by = -8.5 * u;
+    for (const s of [-1, 1]) paint([[bx, by], [bx + s * 2.5 * u, by - 1.5 * u], [bx + s * 2.9 * u, by - .2 * u], [bx + s * 2.3 * u, by + 1.1 * u]], { wash: '#D8394E', fill: '#F0707F', fillOp: 70, ink: PAL.ink, sw: sw * .7, curv: .35 });
+    for (const s of [-1, 1]) inkLine([[bx + s * .6 * u, by - .2 * u], [bx + s * 1.7 * u, by - .7 * u]], sw * .4, '#A82238', 'inkfine', .3);
+    paint(ellPts(bx, by, .65 * u, .7 * u, 12), { wash: '#B82A40', ink: PAL.ink, sw: sw * .6 });
   } else if (h === 'cat') {
     for (const s of [-1, 1]) {
       paint([[s * 4.9 * u, -7.9 * u], [s * 4.3 * u, -11 * u], [s * 1.9 * u, -7.9 * u]], { wash: PAL.clay, ink: PAL.ink, sw: sw * .8 });

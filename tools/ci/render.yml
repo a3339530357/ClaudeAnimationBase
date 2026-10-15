@@ -1,0 +1,111 @@
+# 模板: 复制到新项目的 .github/workflows/render.yml。产物名 mv.mp4 可以改成片名；原曲加密放 assets/music.m4a.gpg，口令设成仓库 Secret MUSIC_KEY。
+# 视频可以比音乐长（结尾留白），合成时会给音轨补静音。
+# 完整渲染：整片（或 range 指定的一段）按帧数切成 N 段，N 台 GitHub 机器并行渲染，每段压成 MP4，
+# 最后拼接、解密原曲配上音轨，产出可下载的成片（Actions 页面 → 这次运行 → Artifacts → video）。
+# 手动触发：gh workflow run render.yml [-f range=23:27] [-f segments=20]
+# 机器没有显卡：render.mjs --ci（Mesa llvmpipe + CPU 2D 画布，见 render.mjs 顶部注释）。
+# 用 ubuntu-26.04：24.04 的旧 Mesa 会在水彩晕染（fill）的矩形边界画出细线框，暗背景上很明显；26.04 和本机一致，干净。
+# 漫画画风（manga/）纯 2D 画布，不挑系统，同一份模板直接用。
+name: render
+
+on:
+  workflow_dispatch:
+    inputs:
+      range:
+        description: 渲染哪一段（秒，a:b），留空 = 整片
+        default: ''
+      segments:
+        description: 分几段并行（≤ 20）
+        default: '20'
+  push:   # only so GitHub registers the workflow when this file changes; the jobs skip on push
+    paths: ['.github/workflows/render.yml']
+
+concurrency: render
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-26.04
+    outputs:
+      segs: ${{ steps.p.outputs.segs }}
+      a: ${{ steps.p.outputs.a }}
+      b: ${{ steps.p.outputs.b }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: p
+        run: |
+          node -e '
+            const src = require("fs").readFileSync("src/config.js", "utf8");
+            const PROJECT = new Function(src + "; return PROJECT;")(), fps = 30;
+            const r = (process.env.RANGE || "").trim(), n = Math.max(1, Math.min(20, +process.env.SEGS || 20));
+            const [a, b] = r ? r.split(":").map(Number) : [0, PROJECT.duration];
+            const f0 = Math.round(a * fps), f1 = Math.min(Math.ceil(PROJECT.duration * fps), Math.round(b * fps));
+            const segs = [];
+            for (let i = 0; i < n; i++) { const s = f0 + Math.floor(i * (f1 - f0) / n), e = f0 + Math.floor((i + 1) * (f1 - f0) / n); if (e > s) segs.push({ i, s, e }); }
+            const out = require("fs").createWriteStream(process.env.GITHUB_OUTPUT, { flags: "a" });
+            out.write(`segs=${JSON.stringify(segs)}\na=${a}\nb=${b}\n`);
+            console.log(`frames ${f0}..${f1 - 1} in ${segs.length} segments`, segs);
+          '
+        env: { RANGE: '${{ inputs.range }}', SEGS: '${{ inputs.segments }}' }
+
+  frames:
+    needs: plan
+    runs-on: ubuntu-26.04
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        seg: ${{ fromJSON(needs.plan.outputs.segs) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - name: Mesa (llvmpipe), ffmpeg, chrome-headless-shell
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq libegl1 libgl1-mesa-dri libgles2 ffmpeg > /dev/null
+          npx -y @puppeteer/browsers install chrome-headless-shell@stable --path "$HOME/chs" | tee chs.txt
+          echo "CHROME_PATH=$(awk '{print $2}' chs.txt | tail -1)" >> "$GITHUB_ENV"
+      - name: render frames ${{ matrix.seg.s }}..${{ matrix.seg.e }}
+        run: |
+          A=$(node -e "console.log(${{ matrix.seg.s }} / 30)"); B=$(node -e "console.log(${{ matrix.seg.e }} / 30)")
+          for try in 1 2 3; do
+            node render.mjs --ci --frames --range=$A:$B --workers=2 && break
+            echo "renderer died (try $try), resuming"; sleep 5
+          done
+      - name: encode segment
+        run: |
+          n=$(( ${{ matrix.seg.e }} - ${{ matrix.seg.s }} ))
+          ffmpeg -y -loglevel error -framerate 30 -start_number ${{ matrix.seg.s }} -i out/frames/f%05d.jpg -frames:v $n \
+            -vf 'scale=in_range=pc:out_range=tv:in_color_matrix=bt601:out_color_matrix=bt709,format=yuv420p' \
+            -c:v libx264 -preset medium -crf 16 -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv \
+            -r 30 seg_$(printf %02d ${{ matrix.seg.i }}).mp4
+          ls -la seg_*.mp4
+      - uses: actions/upload-artifact@v4
+        with: { name: 'seg-${{ matrix.seg.i }}', path: 'seg_*.mp4', retention-days: 3 }
+
+  video:
+    needs: [plan, frames]
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+      - uses: actions/download-artifact@v4
+        with: { pattern: 'seg-*', merge-multiple: true, path: segs }
+      - name: join + music
+        env: { MUSIC_KEY: '${{ secrets.MUSIC_KEY }}' }
+        run: |
+          ls segs | sort | sed 's#^#file segs/#' > list.txt; cat list.txt
+          ffmpeg -y -loglevel error -f concat -safe 0 -i list.txt -c copy video_silent.mp4
+          printf '%s' "$MUSIC_KEY" > key.txt
+          gpg --batch --quiet --passphrase-file key.txt -o music.m4a -d assets/music.m4a.gpg && rm key.txt
+          A=${{ needs.plan.outputs.a }}
+          # the video runs past the end of the song: pad the audio with silence to the video's length
+          ffmpeg -y -loglevel error -i video_silent.mp4 -ss $A -i music.m4a -map 0:v -map 1:a -c:v copy -af apad -c:a aac -b:a 192k -shortest -movflags +faststart mv.mp4
+          rm music.m4a
+          ffprobe -v error -show_entries format=duration:stream=codec_name,width,height,r_frame_rate -of compact mv.mp4
+      - uses: actions/upload-artifact@v4
+        with: { name: video, path: 'mv.mp4', retention-days: 14 }

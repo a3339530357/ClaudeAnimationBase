@@ -13,29 +13,40 @@
 //     node render.mjs --encode --out=out/video.mp4                                           out/frames → MP4
 //   Standalone loops (LOOPS in the page): add --loop=<name> to any of the above (times are then loop times), or
 //     node render.mjs --loop=emotions --png --out=out/loop_emotions                          one cycle as PNGs (for GIFs)
-//   Music: --audio=assets/song.mp3 (or PROJECT.audio) is muxed into --clip and --encode. Other flags: --fps=24,
-//   --chrome=<path to Chrome/Chromium>.
+//   Music: --audio=assets/song.mp3 (or PROJECT.audio) is muxed into --clip and --encode. Other flags: --fps=30,
+//   --ci (no GPU: llvmpipe + CPU 2D canvas, needs chrome-headless-shell via --chrome or CHROME_PATH),
+//   --chrome=<path to Chrome/Chromium>, --size=1920x1440 (another canvas shape, for covers: with --stills),
+//   --page=manga/studio.html (another page than studio.html).
 import puppeteer from 'puppeteer-core';
 import { spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync, existsSync, statSync, renameSync, readdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, statSync, renameSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 
 const args = Object.fromEntries(process.argv.slice(2).map(a => { const [k, v] = a.replace(/^--/, '').split('='); return [k, v ?? true]; }));
-const CHROMES = [args.chrome, process.env.CHROME_PATH, 'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+// WSL2: WebGL only reaches the real GPU through Mesa's d3d12 driver, and only in Playwright's chrome-headless-shell
+// (google-chrome gets no WebGL context with --use-angle=gl). Without these, Chrome falls back to llvmpipe (CPU).
+const isWSL = process.platform === 'linux' && readFileSync('/proc/sys/kernel/osrelease', 'utf8').toLowerCase().includes('microsoft');
+const wslGPU = isWSL && !args['soft-gl'] && !args['gpu-angle'] && !args.ci;
+// --ci: no GPU (GitHub runners). WebGL on Mesa llvmpipe through chrome-headless-shell, and 2D canvases rasterized on the
+// CPU: p5.brush paints every watercolor fill on a 2D mask canvas, and an emulated-GPU 2D canvas makes each fill crawl
+// (24 small fills: ~5 s → ~0.6 s; six Clawds: ~10 s → ~1.5 s). On a real GPU the same switch is slower, so it's CI-only.
+const CHROMES = [args.chrome, process.env.CHROME_PATH, ...(wslGPU || args.ci ? playwrightChromes('chromium_headless_shell') : []),
+  'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser',
   ...playwrightChromes()];
-// Chromium builds Playwright downloaded (~/.cache/ms-playwright/chromium-NNNN), newest first
-function playwrightChromes() {
+// Chromium builds Playwright downloaded (~/.cache/ms-playwright/chromium-NNNN or chromium_headless_shell-NNNN), newest first
+function playwrightChromes(kind = 'chromium') {
   const dir = `${homedir()}/.cache/ms-playwright`;
   if (!existsSync(dir)) return [];
-  return readdirSync(dir).filter(n => /^chromium-\d+$/.test(n)).sort((a, b) => b.split('-')[1] - a.split('-')[1])
-    .map(n => `${dir}/${n}/chrome-linux64/chrome`);
+  const exe = kind === 'chromium' ? 'chrome-linux64/chrome' : 'chrome-headless-shell-linux64/chrome-headless-shell';
+  return readdirSync(dir).filter(n => new RegExp(`^${kind}-\\d+$`).test(n)).sort((a, b) => b.split('-')[1] - a.split('-')[1])
+    .map(n => `${dir}/${n}/${exe}`);
 }
 const CHROME = CHROMES.find(p => p && existsSync(p));
 if (!CHROME) { console.error('Chrome not found: pass --chrome=<path> or set CHROME_PATH'); process.exit(1); }
-const fps = +(args.fps || 24), FRAMES_DIR = 'out/frames';
+const fps = +(args.fps || 30), FRAMES_DIR = 'out/frames';
 const run = (cmd, a) => new Promise((ok, bad) => { const p = spawn(cmd, a, { stdio: 'inherit' }); p.on('close', c => c ? bad(new Error(cmd + ' exited ' + c)) : ok()); });
 const times = s => String(s).split(',').map(Number);
 const span = s => String(s).split(':').map(Number);
@@ -59,19 +70,33 @@ const ANGLE = { vulkan: ['--use-angle=vulkan', '--enable-features=Vulkan'], 'gl-
 if (args['gpu-angle'] && !ANGLE[args['gpu-angle']]) { console.error(`--gpu-angle must be one of ${Object.keys(ANGLE)}`); process.exit(1); }
 const gpu = args['soft-gl'] ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']
   : args['gpu-angle'] ? ANGLE[args['gpu-angle']]
+  : args.ci ? ['--use-angle=gl-egl', '--disable-accelerated-2d-canvas']
+  : wslGPU ? ['--use-angle=gl']
   : process.platform === 'win32' ? ['--use-angle=d3d11'] : process.platform === 'darwin' ? ['--use-angle=metal'] : ['--use-gl=angle'];
+const gpuEnv = args.ci ? { LIBGL_ALWAYS_SOFTWARE: '1', GALLIUM_DRIVER: 'llvmpipe' }
+  : wslGPU ? { GALLIUM_DRIVER: 'd3d12', LD_LIBRARY_PATH: '/usr/lib/wsl/lib', MESA_D3D12_DEFAULT_ADAPTER_NAME: process.env.GPU_NAME || 'NVIDIA' } : {};
 // Ubuntu 23.10+ blocks Chrome's user-namespace sandbox; headless rendering of local files doesn't need it.
 const sandbox = process.platform === 'linux' ? ['--no-sandbox'] : [];
-const browser = await puppeteer.launch({
-  executablePath: CHROME, headless: true, protocolTimeout: 0,
+// Pages in one browser share a renderer process, so parallel workers each get their own browser (else they don't scale).
+// Profiles live in out/.profiles next to this script, never in the system temp dir, and are reused so the GPU shader
+// cache stays warm between runs. One per worker slot; sheets/stills and parallel runs use different slots.
+const PROFILES = fileURLToPath(new URL('./out/.profiles/', import.meta.url));
+let slot = 0;
+const launch = () => puppeteer.launch({
+  executablePath: CHROME, headless: CHROME.includes('headless-shell') ? 'shell' : true, protocolTimeout: 0, env: { ...process.env, ...gpuEnv },
+  userDataDir: `${PROFILES}${process.platform}-${args.frames || args.png ? 'w' : 'p'}${slot++}`,
   args: [...sandbox, '--allow-file-access-from-files', '--ignore-gpu-blocklist', ...gpu, '--enable-gpu-rasterization', '--window-size=1920,1080', '--disable-renderer-backgrounding', '--disable-background-timer-throttling']
 });
-async function openPage(tag = '') {
-  const page = await browser.newPage();
+const browser = await launch(), extra = [];
+async function openPage(tag = '', br = browser) {
+  const page = await br.newPage();
   page.on('console', m => { if (['error', 'warn'].includes(m.type())) console.log(`[page${tag}]`, m.text()); });
   page.on('pageerror', e => console.log(`[page error${tag}]`, e.message));
-  await page.goto(pathToFileURL(resolve('studio.html')).href + '?render', { waitUntil: 'networkidle0' });
-  await page.waitForFunction('window.ready === true', { timeout: 60000 });
+  // slow CPU-only machines (GitHub runners): setup can take minutes
+  // --size=WxH renders on a canvas of another shape (covers, vertical stills); the video itself stays 1920x1080.
+  // --page=<html> renders another page than studio.html (e.g. --page=manga/studio.html for the manga kit's demo).
+  await page.goto(pathToFileURL(resolve(args.page || 'studio.html')).href + '?render' + (args.size ? '&size=' + args.size : ''), { waitUntil: 'networkidle0', timeout: 300000 });
+  await page.waitForFunction('window.ready === true', { timeout: 300000 });
   if (args.loop) {
     const ok = await page.evaluate(name => { if (!LOOPS[name]) return false; window.LOOP = LOOPS[name]; return true; }, args.loop);
     if (!ok) { console.error(`no loop named "${args.loop}"`); process.exit(1); }
@@ -82,6 +107,18 @@ const frameOf = async (page, t, type, q) => {
   const url = await page.evaluate((t, type, q) => window.renderAt(t, type, q), t, type, q);
   return Buffer.from(url.slice(url.indexOf(',') + 1), 'base64');
 };
+// one page per worker, worker 0 in the main browser and the rest in their own; returns once all are ready
+async function workerPages(n) {
+  const t0 = Date.now();
+  // opened one after another: their CPU-heavy setups (paper, grain) starve each other on small machines
+  const pages = [];
+  for (let w = 0; w < n; w++) {
+    const br = w ? await launch() : browser; if (w) extra.push(br);
+    pages.push(await openPage('#' + w, br));
+  }
+  console.log(`${n} workers ready in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+  return pages;
+}
 // the length of whatever is being rendered: a loop's .len, or the video's duration
 const lengthOf = page => page.evaluate(() => window.LOOP ? window.LOOP.len : DUR);
 
@@ -93,6 +130,7 @@ if (args.sheet || args.strip) {
   const crop = args.crop ? times(args.crop) : null, at = args['crop-at'] ? fields(args['crop-at']) : null;
   const { url, ms } = await page.evaluate((ts, c, w, crop, at) => window.renderSheet(ts, c, w, crop, at), ts, +(args.cols || (args.strip ? 6 : 3)), +(args.w || (args.strip ? 320 : 640)), crop, at);
   writeFileSync(out, Buffer.from(url.slice(url.indexOf(',') + 1), 'base64'));
+  console.log(`GPU: ${await page.evaluate(() => window.gpuInfo())}`);
   console.log(`${out}  (${ts.length} frames)  ms/frame: ${ms.join(' ')}`);
 } else if (args.stills) {
   const page = await openPage(), out = args.out || 'out/stills'; mkdirSync(out, { recursive: true });
@@ -107,9 +145,9 @@ if (args.sheet || args.strip) {
   const probe = await openPage(), len = await lengthOf(probe); await probe.close();
   const [a, b] = args.range ? span(args.range) : [0, len], n = Math.round((b - a) * fps);
   const out = args.out || `out/${args.loop ? 'loop_' + args.loop : 'png'}`, workers = +(args.workers || 3); mkdirSync(out, { recursive: true });
+  const pages = await workerPages(workers);
   let next = 0; const start = Date.now();
-  await Promise.all(Array.from({ length: workers }, async (_, w) => {
-    const page = await openPage('#' + w);
+  await Promise.all(pages.map(async page => {
     while (next < n) { const i = next++; writeFileSync(`${out}/f${String(i).padStart(4, '0')}.png`, await frameOf(page, a + i / fps, 'image/png')); }
   }));
   console.log(`${n} frames → ${out}  (${((Date.now() - start) / n).toFixed(0)} ms/frame)`);
@@ -121,9 +159,9 @@ if (args.sheet || args.strip) {
   const first = Math.round(a * fps), last = Math.min(Math.ceil(len * fps) - 1, Math.round(b * fps) - 1);
   const todo = []; for (let i = first; i <= last; i++) { const f = `${FRAMES_DIR}/f${String(i).padStart(5, '0')}.jpg`; if (!existsSync(f) || statSync(f).size < 1000) todo.push(i); }
   console.log(`${todo.length} frames to render (${last - first + 1 - todo.length} already done), ${workers} workers`);
+  const pages = await workerPages(workers);
   let next = 0, done = 0; const start = Date.now();
-  await Promise.all(Array.from({ length: workers }, async (_, w) => {
-    const page = await openPage('#' + w);
+  await Promise.all(pages.map(async page => {
     while (next < todo.length) {
       const i = todo[next++], f = `${FRAMES_DIR}/f${String(i).padStart(5, '0')}.jpg`;
       const buf = await frameOf(page, i / fps, 'image/jpeg', .94);
@@ -154,4 +192,4 @@ if (args.sheet || args.strip) {
 } else {
   console.log('nothing to do: see the usage notes at the top of render.mjs');
 }
-await browser.close();
+await Promise.all([browser, ...extra].map(b => b.close()));

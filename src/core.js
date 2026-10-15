@@ -1,6 +1,7 @@
 // core.js: constants, helpers, paper, paint wrapper, compositing and render hooks.
 // Length and rhythm come from PROJECT in config.js.
-const W = 1920, H = 1080;
+// ?size=WxH (render.mjs --size) gives the canvas another shape, for covers; everything else is 1920x1080.
+const [W, H] = (new URLSearchParams(location.search).get('size') || '1920x1080').split('x').map(Number);
 const BPM = PROJECT.bpm, BEAT = 60 / BPM, OFF = PROJECT.offset || 0, BOIL = 12, DUR = PROJECT.duration;
 const TAU = Math.PI * 2;
 const PAL = {
@@ -219,7 +220,9 @@ function drawLetters(c) {
     c.save(); c.translate(L.x, L.y); c.rotate(L.rot || 0); c.scale(k, k); c.globalAlpha = L.alpha ?? 1;
     c.font = L.font || `${L.size}px "Permanent Marker", "Comic Sans MS", cursive`;
     c.textAlign = L.align || 'center'; c.textBaseline = 'middle';
-    if (L.stroke) { c.lineJoin = 'round'; c.lineWidth = L.size * .12; c.strokeStyle = L.stroke; c.strokeText(L.txt, 0, 0); }
+    if (L.glow) { c.shadowColor = L.glow; c.shadowBlur = L.size * .35; }   // neon: a soft halo in the glow colour
+    if (L.stroke) { c.lineJoin = 'round'; c.lineWidth = L.size * (L.strokeW ?? .12); c.strokeStyle = L.stroke; c.strokeText(L.txt, 0, 0); }
+    c.shadowBlur = 0;
     if (L.ink !== false) { c.fillStyle = PAL.ink; c.fillText(L.txt, L.size * .045, L.size * .055); }
     c.fillStyle = L.color; c.fillText(L.txt, 0, 0);
     c.restore();
@@ -276,14 +279,14 @@ async function setup() {
   createCanvas(W, H, WEBGL); pixelDensity(1); noLoop();
   brush.scaleBrushes(5); defineBrushes();
   paperG = makePaper(); grainC = makeGrain(); glowTex = makeGlowTex(); letG = createGraphics(W, H); letG.pixelDensity(1);
-  outC = document.getElementById('out'); outX = outC.getContext('2d');
-  await document.fonts.load('100px "Permanent Marker"');
+  outC = document.getElementById('out'); outC.width = W; outC.height = H; outX = outC.getContext('2d');
+  await Promise.all(['100px "Permanent Marker"', '100px "Ma Shan Zheng"', '100px "ZCOOL KuaiLe"'].map(f => document.fonts.load(f, '电击小子火星大力拳')));
   window.ready = true;
   if (!location.search.includes('render')) devUI();
 }
 function draw() {
   if (!window.ready) return;
-  LETTERS = []; CAM = LAST_CAM = null;
+  LETTERS = []; CAM = LAST_CAM = null; POST = {};
   push(); translate(-W / 2, -H / 2);
   BOILN = Math.floor(T * BOIL); CLAWD_N = 0; boilSeed('frame'); noiseSeed(77);
   image(paperG, 0, 0);
@@ -293,8 +296,11 @@ function draw() {
 function composite(t) {
   const c = outX;
   c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
+  c.filter = POST.filter || 'none';             // impact frames, mono (fx.js)
   c.drawImage(drawingContext.canvas, 0, 0, W, H);
   drawLetters(c);
+  if (POST.overlay) POST.overlay(c, t);         // 2D text over the painting, under the grain (the karaoke band)
+  c.filter = 'none';
   c.globalCompositeOperation = 'multiply'; c.drawImage(grainC, 0, 0);
   c.globalCompositeOperation = 'source-over';
 }

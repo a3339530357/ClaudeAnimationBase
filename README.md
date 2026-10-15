@@ -1,3 +1,9 @@
+> 做卡点 MV 之前先读 [MV制作手册.md](MV制作手册.md)（流程、经验、踩坑记录、资源清单）。这份资源库在原版（下面英文部分）的基础上加了：
+>
+> - 两套画风：根目录的水彩 Clawd（原版引擎，加了小桃等角色、特效和字幕），以及 [manga/](manga/README.md) 黑白漫画 + 一抹红（纯 2D canvas，真人比例的动漫人物）
+> - [extras/](extras/README.md)：以前片子里的现成场景、道具和角色
+> - `tools/music/`：拍网格、对拍视频；`tools/lyrics/`：逐字歌词时间、字幕字体；`tools/ci/`：云端分段渲染模板
+
 # Claude Animation Base
 
 This is a small starter kit with code, instructions and assets for animating a character in [p5.js](https://p5js.org) and [p5.brush](https://github.com/acamposuribe/p5.brush) with Claude Opus 5.5. It's based on the code from the music video [I'm Upping My P(doom)](https://github.com/JohnHeibel/PDoomVideo) and an analysis of what the model did and didn't do well. I highly recommend playing around with your prompting: make it give you the storyboard before coding, give it very broad instructions, try being very specific, ask for subagents, and try a bunch of other fun ways of testing the model's capabilities. In my testing, it can do a lot with very little, but it's also quite accurate when you give it more requirements. Also try asking the model to swap out the character or make new emotions or costumes, give it your own reference images, and try many other fun things like that. I've found that the reasoning level corresponds to how "extravagant" and detail-oriented the model makes the scene. All test videos were generated with Opus 5.5 on xhigh reasoning in Claude Code.
