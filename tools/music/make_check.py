@@ -25,7 +25,9 @@ COLS = ['#C8642A', '#2E6FB7', '#B8901C', '#3A8F6B', '#8E44AD', '#2C7A7B', '#C245
 SEC = [tuple(s) for s in PL.get('sections', [[b, f'第 {b // 32 + 1} 段'] for b in range(0, NB, 32)])]
 SHOTS = [tuple(s) for s in PL.get('shots', [[b, b // 8 + 1, f'第 {b // 4 + 1}–{b // 4 + 2} 小节', '', COLS[(b // 8) % len(COLS)]] for b in range(0, NB, 8)])]
 SUBS = [tuple(s) for s in PL.get('subs', [])]
-CUES = [tuple(s) for s in PL.get('cues', [[h['beat'], h['note'], 'big' if '鼓' in h['note'] else 'act'] for h in TM.get('hits', {}).values() if 0 <= h['beat'] < NB])]
+# 没给 cues 才用 hits 里带拍号的那些（hits 里也可能有蓄力段 {t0, t1}、一串卡点 [...]，没有 beat 的跳过）
+CUES = [tuple(s) for s in PL['cues']] if 'cues' in PL else \
+       [(h['beat'], h['note'], 'big' if '鼓' in h['note'] else 'act') for h in TM.get('hits', {}).values() if isinstance(h, dict) and 0 <= h.get('beat', -1) < NB]
 CUES.sort()
 RISER = tuple(PL['riser']) if 'riser' in PL else None
 
