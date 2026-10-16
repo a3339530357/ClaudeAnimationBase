@@ -7,7 +7,21 @@
 const KFONT = '"ZCOOL KuaiLe", "Noto Sans CJK SC", sans-serif', KSIZE = 54, KY = 1000;
 const KLIT = '#FFD84A', KDIM = '#F7EEDB';
 
+// Or one of lyricfx's three styles (lyricfx/README.md): slip (paper strip), pop (big characters popping), kinetic
+// (chunks slamming in on the beat). Define const LYRIC_FX = { style: 'slip', layout: {...} } next to LY in the project,
+// or add ?ly=slip|pop|kinetic to the page URL to try one. kinetic shakes the painting as words land (POST.shake).
+const LY_PICK = new URLSearchParams(location.search).get('ly');
+function lyricFXOn(t) {
+  const fx = LY_PICK ? { style: LY_PICK } : typeof LYRIC_FX !== 'undefined' ? LYRIC_FX : null;
+  if (!fx || typeof lyricFX === 'undefined') return false;
+  const o = { W, H, beats: Array.from({ length: Math.ceil(DUR / BEAT) + 2 }, (_, n) => OFF + n * BEAT), boil: t => Math.floor(t * BOIL), ...fx, lines: LY };
+  POST.shake = lyricFX(null, t, o).shake;
+  POST.overlay = c => lyricFX(c, t, o);
+  return true;
+}
+
 function karaoke(t) {
+  if (lyricFXOn(t)) return;
   const L = LY.find(l => t >= l[0] - .12 && t < l[1] + .1); if (!L) return;
   const [a, b, line] = L;
   const grow = easeOut(seg(t, a - .12, a + .06)) * (1 - ease(seg(t, b - .02, b + .1)));

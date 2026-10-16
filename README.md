@@ -1,6 +1,7 @@
 > 做卡点 MV 之前先读 [MV制作手册.md](MV制作手册.md)（流程、经验、踩坑记录、资源清单）。这份资源库在原版（下面英文部分）的基础上加了：
 >
 > - 两套画风：根目录的水彩 Clawd（原版引擎，加了小桃等角色、特效和字幕），以及 [manga/](manga/README.md) 黑白漫画 + 一抹红（纯 2D canvas，真人比例的动漫人物）
+> - [lyricfx/](lyricfx/README.md)：三种动效歌词字幕（纸条贴字、大字蹦出、动态排版），两套画风通用
 > - [extras/](extras/README.md)：以前片子里的现成场景、道具和角色
 > - `tools/music/`：拍网格、对拍视频；`tools/lyrics/`：逐字歌词时间、字幕字体；`tools/ci/`：云端分段渲染模板
 

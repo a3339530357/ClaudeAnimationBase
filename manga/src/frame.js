@@ -27,6 +27,7 @@ async function setup() {
   outC = document.getElementById('out'); outC.width = W; outC.height = H; outX = outC.getContext('2d');
   PAPER_C = makePaper(); GRAIN_C = makeGrain();
   if (CAPTION_CHARS) await document.fonts.load('100px "Caption"', CAPTION_CHARS).catch(() => {});   // no fonts/caption.otf: system serif
+  if (CAPTION_CHARS) await Promise.all(['100px "Ma Shan Zheng"', '100px "ZCOOL KuaiLe"'].map(f => document.fonts.load(f, CAPTION_CHARS).catch(() => {})));   // lyricfx's fonts
   window.ready = true;
   if (!location.search.includes('render')) devUI();
 }
@@ -41,7 +42,8 @@ function composite(t) {
   const c = outX;
   c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
   c.filter = POST.invert ? 'invert(1) hue-rotate(180deg)' : 'none';
-  c.drawImage(CV, 0, 0);
+  const [sx, sy] = POST.shake || [0, 0], m = Math.abs(sx) + Math.abs(sy);   // lyricfx kinetic: the page shakes (zoomed a hair so no edge shows)
+  c.drawImage(CV, sx - m, sy - m * H / W, W + 2 * m, H + 2 * m * H / W);
   c.filter = 'none';
   if (POST.overlay) POST.overlay(c, t);
   c.globalCompositeOperation = 'multiply'; c.drawImage(GRAIN_C, 0, 0);

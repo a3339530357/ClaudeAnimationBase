@@ -24,6 +24,8 @@ mkdir -p $P/assets $P/fonts $P/work/{analysis,secrets} $P/out/check $P/.github/w
 cp -r $B/manga/studio.html $B/manga/src $P/ && rm $P/src/scenes/demo.js
 cp -r $B/{render.mjs,package.json,package-lock.json,node_modules} $P/
 cp $B/LICENSE $P/LICENSE-ClaudeAnimationBase; cp $B/tools/ci/render.yml $P/.github/workflows/
+cp -r $B/lyricfx $P/ && cp $B/fonts/{MaShanZheng,ZCOOLKuaiLe}-Regular.ttf $P/fonts/   # 动效歌词字幕（lyricfx/README.md）
+sed -i 's#\.\./lyricfx/#lyricfx/#; s#\.\./fonts/#fonts/#' $P/studio.html
 ```
 
 然后：
@@ -40,7 +42,7 @@ cp $B/LICENSE $P/LICENSE-ClaudeAnimationBase; cp $B/tools/ci/render.yml $P/.gith
 | `mfx.js` | 光 `glowW / beam`（叠加，只在暗底上看得见），`flashScreen / fillScreen`，集中线 `focusLines`，速度线 `speedLines`，少女漫画闪光 `sparkle`，泡泡 `bubbles`，雨 `rain`，石化裂纹 `cracks`，墨团 `inkBlob`，分格 `panel()`（`slam` 砸入），`page()` 铺纸 |
 | `frame.js` | 每帧流程；`POST.invert` 黑白反转（频闪，红色不变），`POST.overlay` 字幕叠层；纸纹和印刷颗粒 |
 | `timeline.js` `music.js` | `shots()`、`LOOPS`；`bt / sbeat / kick / clap / S / HIT / LY` |
-| `karaoke.js` | 漫画旁白框字幕：白底黑框，每个字唱到时从灰变黑 |
+| `karaoke.js` | 漫画旁白框字幕：白底黑框，每个字唱到时从灰变黑；`music.js` 里加 `LYRIC_FX` 就换成 `lyricfx/` 的纸条、大字或动态排版 |
 | `face.js` | `head(x, y, s, spec, ex, o)`：正面、3/4、侧脸、背面；表情 `eyes / mouth / brow / blush / tears / cry / sweat`，妆 `liner / smoky / lips` |
 | `hair.js` `hair2.js` | 发型：用一片片发束 `lock()` 拼出漫画头发，天使环 `sheen`；6 套现成发型、红发绳 `hairTie`（可以绷断） |
 | `body.js` `outfit.js` | `person(x, y, s, spec, P, o)` 画出一整个人：身体朝向 `v`，头朝向 `hv`，背面 `rear`，侧脸 `side`，倾斜 `lean`，手臂 `aR / aL`，腿 `lR / lL`，手型 `hR / hL`（open / fist / point / relax / hold / peace），表情 `ex`；`o.holdR / holdL` 往手里放东西；`LASTP` 记下头和手画在哪 |

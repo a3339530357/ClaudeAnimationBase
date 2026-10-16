@@ -1,0 +1,93 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>歌词字幕特效 · 示例</title>
+<style>
+  @font-face { font-family: 'Ma Shan Zheng'; font-display: block; src: url(../fonts/MaShanZheng-Regular.ttf) format('truetype'); }
+  @font-face { font-family: 'ZCOOL KuaiLe'; font-display: block; src: url(../fonts/ZCOOLKuaiLe-Regular.ttf) format('truetype'); }
+  html, body { margin: 0; background: #1b1820; }
+  #out { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+</style>
+</head>
+<body>
+<canvas id="out" width="1920" height="1080"></canvas>
+<script src="lyricfx.js"></script>
+<script>
+// 三种样式各两句，依次播放：0–6 秒纸条（slip），6–11.5 秒大字（pop），11.5 秒起动态排版（kinetic）。
+// 浏览器里直接打开就循环播放；?ly=slip|pop|kinetic 全程只看一种；?t=3.2 停在某一秒。
+// 资源库根目录：node render.mjs --page=lyricfx/demo.html --sheet=1.5,4.5,7.5,10,12.8,15.5 --out=out/check/lyricfx.jpg
+//               node render.mjs --page=lyricfx/demo.html --clip --out=out/lyricfx_demo.mp4
+const PROJECT = { duration: 18.5, bpm: 120, offset: 0 }, DUR = PROJECT.duration, BEAT = 60 / PROJECT.bpm;
+const W = 1920, H = 1080, INK = '#2b2724', PAPER = '#f4eee0', PAGE = '#fbf8f1';
+const QS = new URLSearchParams(location.search);
+// 歌词：[开始, 结束, 歌词, 每个字的 [开始, 结束]]。最后两句故意不给逐字时间，演示踩拍子
+const even = (a, s, n, d = .2) => Array.from({ length: n }, (_, i) => [a + i * s, a + i * s + d]);
+const LY = [
+  [0.6, 2.9, '纸条拍下来再撕走', even(0.6, .28, 8)],
+  [3.3, 5.7, '唱到哪个字就点亮', even(3.3, .28, 8)],
+  [6.1, 8.5, '大字一个一个蹦出来', even(6.1, .25, 9)],
+  [8.9, 11.1, '唱完逐字掉下去', even(8.9, .3, 7)],
+  [11.6, 14.4, '动态排版跟着鼓点砸进来'],
+  [14.8, 17.4, '关键词黑底白字'],
+];
+const BEATS = Array.from({ length: Math.ceil(DUR / BEAT) + 2 }, (_, n) => n * BEAT);
+const LAYOUT = {
+  4: { chunks: '动态排版/跟着/【鼓点】/砸进来', pos: [[560, 300], [1380, 250, 4], [1380, 480], [620, 600, -3]], tb: [24, 25, 26, 28] },
+  5: { chunks: '【关键词】/黑底白字', at: [960, 470], tb: [30, 32] },
+};
+const STYLE = QS.get('ly') || (i => i < 2 ? 'slip' : i < 4 ? 'pop' : 'kinetic');
+const NAME = { slip: 'slip 纸条贴字', pop: 'pop 大字蹦出', kinetic: 'kinetic 动态排版' };
+
+const outC = document.getElementById('out'), X = outC.getContext('2d');
+// 背景：米黄纸 + 一点颗粒 + 几笔线稿（窗、桌子、地平线），看字在有线条的画面上清不清楚
+const bg = document.createElement('canvas'); bg.width = W; bg.height = H;
+(() => {
+  const g = bg.getContext('2d'); let s = 7; const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  g.fillStyle = PAPER; g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 20000; i++) { g.fillStyle = `rgba(90,70,40,${.02 + r() * .05})`; g.fillRect(r() * W, r() * H, 1 + r() * 2, 1 + r() * 2); }
+  g.strokeStyle = INK; g.lineWidth = 4; g.lineJoin = g.lineCap = 'round';
+  const wob = (pts) => { g.beginPath(); pts.forEach(([x, y], k) => k ? g.lineTo(x + (r() - .5) * 3, y + (r() - .5) * 3) : g.moveTo(x, y)); g.stroke(); };
+  [[260, 140], [760, 140], [1260, 140]].forEach(([x, y]) => { wob([[x, y], [x + 400, y], [x + 400, y + 300], [x, y + 300], [x, y]]); wob([[x + 200, y], [x + 200, y + 300]]); wob([[x, y + 150], [x + 400, y + 150]]); });
+  wob([[0, 900], [W, 900]]);
+  [[300, 700], [820, 700], [1340, 700]].forEach(([x, y]) => { wob([[x, y], [x + 300, y], [x + 300, y + 40], [x, y + 40], [x, y]]); wob([[x + 20, y + 40], [x + 20, 900]]); wob([[x + 280, y + 40], [x + 280, 900]]); });
+})();
+
+function renderFrame(t) {
+  const o = { lines: LY, style: STYLE, W, H, beats: BEATS, layout: LAYOUT, ink: INK, paper: PAGE };
+  const [sx, sy] = lyricFX(null, t, o).shake, m = Math.abs(sx) + Math.abs(sy);   // 先算这一帧抖多少，背景跟着抖
+  X.setTransform(1, 0, 0, 1, 0, 0); X.clearRect(0, 0, W, H);
+  X.drawImage(bg, sx - m, sy - m * H / W, W + 2 * m, H + 2 * m * H / W);
+  lyricFX(X, t, o);
+  // 左上角标出这一句用的样式
+  const i = LY.findIndex(L => t < L[1] + .4), st = typeof STYLE === 'function' ? STYLE(Math.max(0, i < 0 ? LY.length - 1 : i)) : STYLE;
+  X.font = '30px "ZCOOL KuaiLe", sans-serif'; X.textBaseline = 'top'; X.fillStyle = 'rgba(43,39,36,.85)'; X.fillRect(24, 22, X.measureText(NAME[st]).width + 28, 48);
+  X.fillStyle = '#fff'; X.fillText(NAME[st], 38, 31);
+}
+
+// render.mjs 要的几个钩子：ready、renderAt、renderSheet、gpuInfo（和 studio.html 一样）
+window.renderAt = async (t, type = 'image/png', q = .92) => { renderFrame(t); return outC.toDataURL(type, q); };
+window.renderSheet = async (times, cols = 3, w = 640) => {
+  const h = Math.round(w * H / W), sc = document.createElement('canvas'), ms = [];
+  sc.width = cols * w; sc.height = Math.ceil(times.length / cols) * h; const c = sc.getContext('2d');
+  times.forEach((t, i) => {
+    const t0 = performance.now(); renderFrame(t); ms.push(Math.round(performance.now() - t0));
+    const x = (i % cols) * w, y = Math.floor(i / cols) * h;
+    c.drawImage(outC, x, y, w, h); c.fillStyle = 'rgba(0,0,0,.65)'; c.fillRect(x, y + h - 24, 84, 24); c.fillStyle = '#fff'; c.font = '15px sans-serif'; c.fillText(t.toFixed(2) + 's', x + 6, y + h - 7);
+  });
+  return { url: sc.toDataURL('image/jpeg', .9), ms };
+};
+window.gpuInfo = () => '2D canvas (no WebGL)';
+
+(async () => {
+  const chars = [...new Set(LY.map(L => L[2]).join('') + Object.values(NAME).join(''))].join('');
+  await Promise.all(['100px "Ma Shan Zheng"', '100px "ZCOOL KuaiLe"'].map(f => document.fonts.load(f, chars)));
+  window.ready = true;
+  if (QS.has('render')) return;
+  if (QS.has('t')) return renderFrame(+QS.get('t'));
+  const t0 = performance.now(), loop = () => { renderFrame(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop); };
+  loop();
+})();
+</script>
+</body>
+</html>

@@ -297,7 +297,8 @@ function composite(t) {
   const c = outX;
   c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
   c.filter = POST.filter || 'none';             // impact frames, mono (fx.js)
-  c.drawImage(drawingContext.canvas, 0, 0, W, H);
+  const [sx, sy] = POST.shake || [0, 0], m = Math.abs(sx) + Math.abs(sy);   // lyricfx kinetic: the painting shakes (zoomed a hair so no edge shows)
+  c.drawImage(drawingContext.canvas, sx - m, sy - m * H / W, W + 2 * m, H + 2 * m * H / W);
   drawLetters(c);
   if (POST.overlay) POST.overlay(c, t);         // 2D text over the painting, under the grain (the karaoke band)
   c.filter = 'none';

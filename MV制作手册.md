@@ -1,6 +1,6 @@
 # MV 制作手册（卡点动画）
 
-**开新片之前先把这份读完。** 内容来自六条片子：《中华五千年》线稿动画、《电击小子》、《把回忆拼好给你》拼图版和 Clawd 版、《坏女孩》Clawd 版和漫画版，包括做法、哪些受欢迎、哪些不受欢迎，以及踩过的坑。画面怎么画、引擎怎么用：水彩 Clawd 见同目录的 `ANIMATION_GUIDE.md`，黑白漫画见 `manga/README.md`，以前片子里的现成场景道具见 `extras/README.md`。
+**开新片之前先把这份读完。** 内容来自六条片子：《中华五千年》线稿动画、《电击小子》、《把回忆拼好给你》拼图版和 Clawd 版、《坏女孩》Clawd 版和漫画版，包括做法、哪些受欢迎、哪些不受欢迎，以及踩过的坑。画面怎么画、引擎怎么用：水彩 Clawd 见同目录的 `ANIMATION_GUIDE.md`，黑白漫画见 `manga/README.md`，歌词字幕的三种动效样式见 `lyricfx/README.md`，以前片子里的现成场景道具见 `extras/README.md`。
 
 资源库在 `~/project/testt/videos/ClaudeAnimationBase`（备份在私有仓库 https://github.com/a3339530357/ClaudeAnimationBase）。下面命令里的 `tools/...` 都是资源库里的脚本，在项目目录里运行时写成 `$B/tools/...`，其中 `B=~/project/testt/videos/ClaudeAnimationBase`。
 
@@ -158,7 +158,7 @@ Clawd 版就是在这一步拿了 10 分。新角色画得好、用户说要通�
 ```bash
 B=~/project/testt/videos/ClaudeAnimationBase; P=~/project/testt/videos/新项目名
 mkdir -p $P/src/scenes $P/assets $P/work/{analysis,secrets} $P/out/check $P/.github/workflows
-cp -r $B/{ANIMATION_GUIDE.md,docs,fonts,package.json,package-lock.json,render.mjs,studio.html,node_modules} $P/
+cp -r $B/{ANIMATION_GUIDE.md,docs,fonts,lyricfx,package.json,package-lock.json,render.mjs,studio.html,node_modules} $P/
 cp $B/LICENSE $P/LICENSE-ClaudeAnimationBase; cp $B/src/*.js $P/src/; cp $B/tools/ci/render.yml $P/.github/workflows/
 ```
 
@@ -170,6 +170,8 @@ cp $B/LICENSE $P/LICENSE-ClaudeAnimationBase; cp $B/src/*.js $P/src/; cp $B/tool
 - `src/cast_*.js`：角色和道具；`src/world.js`：场景和配色；`src/scenes/common.js`：转场和共用的小工具
 - `src/scenes/ch1_xxx.js`…：每章 4～6 个镜头，每个文件结尾调用 `shots([[开始时间, 函数, 镜头号], ...])`
 - `studio.html` 里脚本的顺序：config → core → clawd → music → fx → karaoke → cast_heroes/robots → timeline → **cast_tao（要用 timeline 里的 LOOPS）** → world → 其他 → scenes（漫画版的顺序见 `manga/studio.html`）
+
+**歌词字幕**：默认的字幕（水彩版是墨块加黄字，漫画版是旁白框）偏安静。用户更喜欢动效强、看得清的字幕，所以**新片默认从 `lyricfx/` 的三种样式里挑**：纸条贴字 `slip`、大字蹦出 `pop`、动态排版 `kinetic`，也可以混搭（比如主歌纸条、副歌动态排版）。在 `music.js` 的 `LY` 旁边加一行 `const LYRIC_FX = { style: 'slip' }` 就能换。动态排版要按镜头一句句摆位置，摆法见 `lyricfx/README.md`。拿不准选哪种时，先出三种的对比小样给用户挑。
 
 **每个镜头函数的写法**：先在注释里写清这一镜观众要依次看懂的几件事（reads）和时间，再写代码。表情变化用 `emotions()`（小桃用 `temo()`），转身用 `turn()`，走路用 `stroll()`，跳用 `jump()`。拿东西用手臂钩子 `armL / armR`，挂在身上的用 `draw`。
 
@@ -241,6 +243,8 @@ ffmpeg -i out/cover/q/t1_00.png -q:v 2 out/cover/歌名_封面_4比3.jpg
 | 结尾反转（她也在偷拍他），前面埋 3 个线索 | 喜欢 | 前面埋伏笔、结尾回收，有惊喜 |
 | 漫画版：用户要"真人形象"，我先去查生图模型 | "不需要用生图吧，真人形象的卡通或者动漫风" | 真人形象也用代码画成动漫风，不找生图 |
 | 漫画版：同一首歌换一个完全不同的故事和画风（换人、换比喻），先出 lookbook 设定页 | "很好，继续" | 第二版就要彻底换掉，设定页这一步保留 |
+| 线稿版：细的手写字（龙藏体）放在画面底部，跟着唱一个个写出来 | "有点看不清，能弄成动效比较强的歌词字幕效果吗" | 字幕要有底或粗描边；整句要有时间读完 |
+| 三种动效字幕（纸条、大字蹦出、动态排版），各出一段对比小样给用户挑 | "这三个格式都超级好"，要求收进资源库 | 收进了 `lyricfx/`；以后新片默认从这三种里挑 |
 
 ## 11. 技术坑速查
 
@@ -261,6 +265,8 @@ ffmpeg -i out/cover/q/t1_00.png -q:v 2 out/cover/歌名_封面_4比3.jpg
 | 云端字幕变成方块 | 云端机器没有中文字体：水彩版用 `fonts/` 里的字体；漫画版用 `tools/lyrics/caption_font.py` 生成歌词用字的子集 `fonts/caption.otf` |
 | 漫画版镜像人物（`v < 0`）往反方向倒 | 镜像后 `lean / tilt` 的方向跟着翻，写完出大图核对 |
 | 漫画版远景人物太小、手像一摞白条、排线太密 | 见 `manga/README.md` 最后一节 |
+| 手写字体把简体字画成繁体（龙藏体的"时"画成"時"） | 换字幕字体前，先用 `fontTools` 查歌词用字在 cmap 里有没有，再出大图逐字看字形；个别字换成别的字体 |
+| 动态排版的字压在人脸、拟声字上 | 先截每句开头、中间、结尾三帧不带字幕的画面找空白处（`LYRIC_FX = { style: 'none' }`），再写 `layout`，见 `lyricfx/README.md` |
 
 ## 12. 资源库里有什么
 
@@ -273,14 +279,18 @@ ffmpeg -i out/cover/q/t1_00.png -q:v 2 out/cover/歌名_封面_4比3.jpg
   - 坏蛋机器人 `villain()`、小机器 `minion()`：`cast_robots.js`
 - **道具**：拍立得 `polaCam()`，三种拿法 `camShoot()`（侧面举到眼前）、`camRaise()`（单手举起，自拍）、`camHang()`（挂在胸前）；照片 `polaroid()`（可显影、可写标题）；邮筒 `postbox()`；蚱蜢 `grasshopper()`；帽子新增 `bigbow`（小桃的蝴蝶结）、`electro`、`chef`。
 - **特效**（`fx.js`）：`kick / shakes / punch`（震动、推镜），`impactFrame`（反色冲击帧），`monoFrame`，`bolt`（闪电），`speedLines`（集中线），`shockRing`（冲击波），`dust`（烟尘）。另外还有 `brushWipe`（timeline.js），以及 `iris / flash / glow`（core.js）。
-- **字幕**：`karaoke.js`，读 `music.js` 里的 `LY`，没有 `LY` 就不显示；有逐字时间就每个字唱到才点亮。
+- **字幕**：`karaoke.js`，读 `music.js` 里的 `LY`，没有 `LY` 就不显示；有逐字时间就每个字唱到才点亮。加了 `LYRIC_FX` 就换成 `lyricfx/` 的样式（见下面）。
 - **现成场景和道具**（`extras/`）：Clawd 版《坏女孩》的霓虹夜城、酒吧、变坏的小桃、手机和酒杯；Clawd 版拼回忆的海边小镇（五个时段配色）、照片里的迷你角色、定格成照片和大浪拍屏的转场。
 
 **黑白漫画**（`manga/`，详见 `manga/README.md`）
 - **人物**：真人比例的动漫人物，脸、发型、身体、服装分开拼；表情、眼线、红唇；6 个现成角色（小鹿从前和后来、阿飞从前和结尾、溜冰场女王、陌生人）。
 - **场景和道具**：2009 年的小城夜景、溜冰场、网吧、卧室、迪吧；诺基亚、QQ 窗口、跳舞机、大头贴、口红等。
 - **漫画手法**：分格砸入、网点、排线、集中线、速度线、闪光、泡泡、雨、裂纹；翻页、撕页、墨水淹没、斜格缝、黑白反转频闪。
-- **字幕**：漫画旁白框，逐字从灰变黑。
+- **字幕**：漫画旁白框，逐字从灰变黑；同样可以用 `LYRIC_FX` 换成 `lyricfx/` 的样式。
+
+**歌词字幕特效**（`lyricfx/`，详见 `lyricfx/README.md`，两套画风通用，别的页面盖一张透明 canvas 也能用）
+- `slip` 纸条贴字（手撕白纸条拍进来、胶带、旧纸条被撕走）、`pop` 大字蹦出（逐字弹出、粗白描边）、`kinetic` 动态排版（分块踩拍砸进空白处、关键词黑底白字、画面跟着抖）；可以混搭。
+- `lyricfx/demo.html` 是示例页：`node render.mjs --page=lyricfx/demo.html --clip --out=out/lyricfx_demo.mp4`。
 
 **工具**
 - `tools/music/`：`beatgrid.py`（拍网格、候选卡点）、`subs_white.py`（读烧录字幕断句）、`make_check.py`（对拍视频）
