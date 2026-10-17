@@ -3,7 +3,28 @@
 #   --lyrics  一行一句（空行跳过，空格和标点去掉）；不给就用 timing.json 里已有 lyrics 的句子（比如读字幕得来的粗时间）
 # 写回 timing.json 的 lyrics: [句开始, 句结束, "歌词", [[字开始, 字结束], ...]]；原来带时间的句子留在 lyrics_subs 做对比
 # 只按"字"对齐，适合中文歌词；英文单词会被当成一串字母，对不上的部分按插值处理
-import json, difflib, argparse, statistics as st
+# 对齐用编辑距离 + 回溯（按顺序），不用 difflib：副歌唱好几遍时，difflib 先找最长的相同片段，会把前面的句子配到最后一遍副歌上
+# （《写不完的温柔》实测差出 146 秒）。输出的 opcodes 和 difflib 同格式，后面的逻辑没变。
+import json, argparse, statistics as st
+def ordered_opcodes(a, b):
+    n, m = len(a), len(b)
+    D = [[0] * (m + 1) for _ in range(n + 1)]
+    for i in range(1, n + 1): D[i][0] = i
+    for j in range(1, m + 1): D[0][j] = j
+    for i in range(1, n + 1):
+        Di, Dp, c = D[i], D[i - 1], a[i - 1]
+        for j in range(1, m + 1): Di[j] = min(Dp[j - 1] + (c != b[j - 1]), Dp[j] + 1, Di[j - 1] + 1)
+    steps, i, j = [], n, m
+    while i or j:
+        if i and j and D[i][j] == D[i - 1][j - 1] + (a[i - 1] != b[j - 1]): steps.append(('equal' if a[i - 1] == b[j - 1] else 'replace', i - 1, j - 1)); i -= 1; j -= 1
+        elif i and D[i][j] == D[i - 1][j] + 1: steps.append(('delete', i - 1, j)); i -= 1
+        else: steps.append(('insert', i, j - 1)); j -= 1
+    ops = []
+    for op, i, j in reversed(steps):
+        di, dj = (1, 1) if op in ('equal', 'replace') else (1, 0) if op == 'delete' else (0, 1)
+        if ops and ops[-1][0] == op and ops[-1][2] == i and ops[-1][4] == j: ops[-1] = (op, ops[-1][1], i + di, ops[-1][3], j + dj)
+        else: ops.append((op, i, i + di, j, j + dj))
+    return ops
 ap = argparse.ArgumentParser(); ap.add_argument('asr'); ap.add_argument('timing'); ap.add_argument('--lyrics')
 A = ap.parse_args()
 T = json.load(open(A.timing, encoding='utf-8')); B = T.get('beat', {}); P, OFF = B.get('period'), B.get('offset', 0)
@@ -18,7 +39,7 @@ W = [(w['text'], w['start_time'] / 1000, w['end_time'] / 1000) for u in json.loa
 lyr = ''.join(s for _, _, s in subs); rec = ''.join(w[0] for w in W)
 owner = [k for k, (_, _, s) in enumerate(subs) for _ in s]
 tm = [None] * len(lyr); log = []
-for op, i0, i1, j0, j1 in difflib.SequenceMatcher(None, lyr, rec, autojunk=False).get_opcodes():
+for op, i0, i1, j0, j1 in ordered_opcodes(lyr, rec):
     if op == 'equal' or (op == 'replace' and i1 - i0 == j1 - j0):
         for k in range(i1 - i0): tm[i0 + k] = W[j0 + k][1:]
         if op == 'replace': log.append(f'认错: 「{lyr[i0:i1]}」← 识别成「{rec[j0:j1]}」，按位置借时间')

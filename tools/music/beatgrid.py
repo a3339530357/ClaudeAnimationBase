@@ -1,9 +1,12 @@
 # beatgrid.py: 给一首歌量出固定的拍网格，并列出可能的卡点（鼓撤、鼓回、重击）。
 #
-# 用法:  python -I beatgrid.py <音频> [--drums 0:17,31:57] [--bpm 140] [--out timing.json]
+# 用法:  python -I beatgrid.py <音频> [--drums 0:17,31:57] [--bpm 140] [--downbeat kick|chroma] [--out timing.json]
 #   --drums  有鼓的时间段（秒）。拍网格只用这些段拟合；不给就用整首。鼓撤掉的间奏会把拟合带偏，最好排除。
 #   --bpm    粗估的 BPM。不给就先用 librosa 估一个，再在它 ±4% 里细扫。
 #   --out    写出 timing.json 骨架（duration、beat、候选卡点），歌词和镜头之后手动补。
+#   --downbeat 小节第一拍怎么定：kick（默认，4 拍里底鼓最重的那拍）或 chroma（和弦变化最大的那拍）。两种都会打印出来。
+#            抒情歌底鼓弱、一小节两下差不多重时，kick 会在两种答案之间跳（《写不完的温柔》两次运行差了两拍），用 chroma。
+#   抒情歌常被量成两倍速（《写不完的温柔》先量出 164，实际 82）：看一句歌词占几拍，一句一般是 4 或 8 拍，不对就用 --bpm 给一半。
 #
 # 思路: librosa 的 beat_track 拍间隔会抖，做卡点要的是一条笔直的网格: 第 n 拍 = offset + n × period。
 # 所以在周期和相位上扫一遍，挑让"低频起音（底鼓）"落点强度总和最大的那组。再看 4 拍里哪一拍最重，定小节线。
@@ -14,6 +17,7 @@ warnings.filterwarnings('ignore')
 
 ap = argparse.ArgumentParser()
 ap.add_argument('audio'); ap.add_argument('--drums', default=''); ap.add_argument('--bpm', type=float); ap.add_argument('--out')
+ap.add_argument('--downbeat', choices=['kick', 'chroma'], default='kick')
 A = ap.parse_args()
 
 y, sr = librosa.load(A.audio, sr=22050, mono=True)
@@ -51,8 +55,17 @@ for a, b in segs:   # 各段相位漂不漂
 n = np.arange(int((dur - ph) / P) + 1); bts = ph + n * P
 idx = np.clip(np.round(bts * sr / hop).astype(int), 0, len(on) - 1)
 heavy = [float(on[idx][(n % 4) == k].mean()) for k in range(4)]
-bar = int(np.argmax(heavy))
-print(f'4 拍里平均最重的一拍: {[round(h, 2) for h in heavy]}，把它定为小节第一拍')
+# 和弦变化: 每拍的 chroma 和前一拍比，小节第一拍通常换和弦
+Cq = librosa.feature.chroma_cqt(y=y, sr=sr, hop_length=512)
+def _bv(k):
+    a = int((ph + k * P) * sr / 512); b = max(a + 1, int((ph + (k + 1) * P) * sr / 512)); v = Cq[:, a:b].mean(1); return v / (np.linalg.norm(v) + 1e-9)
+chg = [float(np.mean([1 - _bv(k) @ _bv(k - 1) for k in n[1:] if k % 4 == j])) for j in range(4)]
+bk, bc = int(np.argmax(heavy)), int(np.argmax(chg))
+bar = bc if A.downbeat == 'chroma' else bk
+print(f'4 拍里平均最重的一拍（底鼓）: {[round(h, 2) for h in heavy]} → 第 {bk + 1} 个位置')
+print(f'4 拍里和弦变化最大的一拍:     {[round(c, 3) for c in chg]} → 第 {bc + 1} 个位置')
+print(f'按 {A.downbeat} 定小节第一拍' + ('' if bk == bc else f'   ← 两种判断不一致：底鼓弱的歌（抒情歌）改用 --downbeat {"chroma" if A.downbeat == "kick" else "kick"} 对比一下，再用对拍视频听'))
+print(f'提示：{60 / P:.1f} BPM 也可能是 {30 / P:.1f} BPM（抒情歌常被量成两倍速），看一句歌词占几拍')
 # 重新编号: offset 取第一条小节线（0 ≤ offset < 一小节），之后 n % 4 == 0 就是小节第一拍；它前面的弱起拍是负数
 off = (ph + bar * P) % (4 * P)
 n = np.arange(-int(off / P), int((dur - off) / P) + 1); bts = off + n * P

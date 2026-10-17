@@ -1,8 +1,10 @@
-# 模板: 复制到新项目的 .github/workflows/render.yml。产物名 mv.mp4 可以改成片名；原曲加密放 assets/music.m4a.gpg，口令设成仓库 Secret MUSIC_KEY。
+# 模板: 复制到新项目的 .github/workflows/render.yml。产物名 mv.mp4 可以改成片名；原曲加密放 assets/music.m4a.gpg 或 assets/music.mp3.gpg
+# （哪个在就用哪个），口令设成仓库 Secret MUSIC_KEY。
 # 视频可以比音乐长（结尾留白），合成时会给音轨补静音。
 # 完整渲染：整片（或 range 指定的一段）按帧数切成 N 段，N 台 GitHub 机器并行渲染，每段压成 MP4，
 # 最后拼接、解密原曲配上音轨，产出可下载的成片（Actions 页面 → 这次运行 → Artifacts → video）。
 # 手动触发：gh workflow run render.yml [-f range=23:27] [-f segments=20]
+# 只改了一小段（比如片头）：-f range=0:22.4 只渲那一段，再用 tools/ci/splice_range.sh 按帧号接回原来的整片，不用全片重渲。
 # 机器没有显卡：render.mjs --ci（Mesa llvmpipe + CPU 2D 画布，见 render.mjs 顶部注释）。
 # 用 ubuntu-26.04：24.04 的旧 Mesa 会在水彩晕染（fill）的矩形边界画出细线框，暗背景上很明显；26.04 和本机一致，干净。
 # 漫画画风（manga/）纯 2D 画布，不挑系统，同一份模板直接用。
@@ -101,12 +103,13 @@ jobs:
           ls segs | sort | sed 's#^#file segs/#' > list.txt; cat list.txt
           ffmpeg -y -loglevel error -f concat -safe 0 -i list.txt -c copy video_silent.mp4
           printf '%s' "$MUSIC_KEY" > key.txt
-          gpg --batch --quiet --passphrase-file key.txt -o music.m4a -d assets/music.m4a.gpg && rm key.txt
+          G=$(ls assets/music.*.gpg | head -1); M=$(basename "$G" .gpg)
+          gpg --batch --quiet --passphrase-file key.txt -o "$M" -d "$G" && rm key.txt
           A=${{ needs.plan.outputs.a }}
           # the video runs past the end of the song: pad the audio with silence to the video's length
           # 原曲常常压到 0 dB：先削峰到 -2 dB 再编码，不然 AAC 编码会冒出 0 dB 爆音（-1 dB 不够，实测编码后又顶回 0）
-          ffmpeg -y -loglevel error -i video_silent.mp4 -ss $A -i music.m4a -map 0:v -map 1:a -c:v copy -af "alimiter=limit=0.79:level=disabled,apad" -c:a aac -b:a 192k -shortest -movflags +faststart mv.mp4
-          rm music.m4a
+          ffmpeg -y -loglevel error -i video_silent.mp4 -ss $A -i "$M" -map 0:v -map 1:a -c:v copy -af "alimiter=limit=0.79:level=disabled,apad" -c:a aac -b:a 192k -shortest -movflags +faststart mv.mp4
+          rm "$M"
           ffprobe -v error -show_entries format=duration:stream=codec_name,width,height,r_frame_rate -of compact mv.mp4
       - uses: actions/upload-artifact@v4
         with: { name: video, path: 'mv.mp4', retention-days: 14 }

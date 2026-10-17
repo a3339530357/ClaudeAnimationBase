@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>像素画风 · 示例</title>
+<style>
+  html, body { margin: 0; background: #16141b; }
+  #out { width: min(100%, 1280px); height: auto; image-rendering: pixelated; }
+</style>
+</head>
+<body>
+<main>
+  <canvas id="out" width="1920" height="1080"></canvas>
+</main>
+<script src="src/config.js"></script>
+<script src="src/px.js"></script>
+<script src="src/frame.js"></script>
+<script src="src/timeline.js"></script>
+<script src="src/music.js"></script>
+<script src="src/font_data.js"></script>
+<script src="src/pxlyrics.js"></script>
+<script src="src/cast_body.js"></script>
+<script src="src/cast_head.js"></script>
+<script src="src/props.js"></script>
+<script src="src/world.js"></script>
+<script src="src/scenes/common.js"></script>
+<script src="src/scenes/demo.js"></script>
+<script src="src/sheet.js"></script>
+<script>
+  const q = new URLSearchParams(location.search).get('loop'); if (q && LOOPS[q]) window.LOOP = LOOPS[q];
+</script>
+<script src="../src/player.js"></script>
+</body>
+</html>
