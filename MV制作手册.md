@@ -31,6 +31,24 @@ ffmpeg -i 原视频.mp4 -vn -c:a copy music.m4a          # 流拷贝，不损失
 ffmpeg -i 原视频.mp4 -vn -c:a libmp3lame -q:a 2 music.mp3   # 要 mp3 时
 ```
 
+**先量一下音轨的响度**，这决定混音要不要处理（《一个人想着一个人》就是在这里发现问题的）：
+
+```bash
+ffmpeg -i music.m4a -af volumedetect -vn -f null - 2>&1 | grep -E "mean_volume|max_volume"
+```
+
+- 平均 -8.4 dB、峰值 0.0 dB = **这条音轨压得很满、已经贴到削波边缘**。原样混进成片，在容器转换和 AAC 编码里会冒过 0 削顶。要削峰 + 响度归一：
+
+```bash
+# 削峰到 -1.3 dB（听感不变）+ 响度收到 -14 LUFS（网络平台标准，别人不用再压我）
+ffmpeg -i in.mp4 -i music.m4a -filter_complex \
+  "[0:v]copy[v];[1:a]atrim=end=50.53,apad,alimiter=limit=0.86:level=disabled:attack=5:release=80:asc=1,loudnorm=I=-14:TP=-1.3:LRA=11:linear=true[a]" \
+  -map "[v]" -map "[a]" -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart out.mp4
+```
+
+- 平均 -20 dB 左右、峰值留了余量 = 不用动，原样混。
+- **音乐比画面短**时用 `apad` 给音轨补静音（别让 `-shortest` 把画面截断）。若结尾是"硬切断在满音量"，参考 `pinhui-lineart-mv/render/music_tail.txt` 的做法：把最后一下做成每拍一次、越轻越闷的回声延到片尾。
+
 ## 2. 音乐分析：拍网格、卡点、歌词时间
 
 Python 环境一律用 uv（系统的 `python3 -m venv` 会失败）：
@@ -73,6 +91,26 @@ work/.venv/bin/python -I tools/lyrics/hold_tails.py work/lyrics/vocals16k.wav wo
 ```
 
 这套流程用《坏女孩》的原始数据重跑过，结果和成片里用的逐字时间完全一致。
+
+**传了歌词上下文时，它会「编时间」**（《一个人想着一个人》发现的，**凡是有唱得飞快的连续短句都要防**）：
+
+带 `--ctx` 那份**不会漏字，但会编时间**。实测它把 2.2 秒按每字 0.04 秒硬塞了 30 个字（那 2.2 秒根本唱不完 30 个字），又另起一段把后半句重复列了一遍，看起来像整段唱了两遍——**实际只唱一遍**。我照抄就写错了歌词句数。
+
+判断某一段是不是被编了：看那段里**每个字的时长中位数**。正常的段是 0.16～0.36 秒，被编的那段是 0.04 秒（识别自己均匀摆的）。
+
+解法（`tools/lyrics/align_two_asr.py`，输入输出都是命令行参数）：
+
+```bash
+# 两份识别：不带上下文那份当基准（时间准、段切得对，但可能漏字），带上下文那份只用来补漏字
+python3 -I tools/lyrics/volc_asr.py work/secrets/volc_speech_key.txt work/lyrics/vocals16k.wav work/lyrics/asr_plain.json --lang zh-CN
+python3 -I tools/lyrics/volc_asr.py work/secrets/volc_speech_key.txt work/lyrics/vocals16k.wav work/lyrics/asr_ctx.json --lang zh-CN --ctx 歌词.txt
+python3 -I tools/lyrics/align_two_asr.py --base work/lyrics/asr_plain.json --fill work/lyrics/asr_ctx.json \
+    --lyrics 歌词.txt --out work/analysis/ly.json
+```
+
+它会打出整体对齐相似度（0.98 以上算干净）、认错的同音字、漏掉的字（从带上下文那份借时间）、以及每句的首尾时间。输出的 `ly.json` 直接能喂给 `make_check.py` 和项目的 `music.js`。
+
+**歌词句数先自己数一遍。** 用户给的歌词里如果有一段是"整段重复"的（副歌重唱），要先确认音乐里是不是真唱了两遍——这次就是识别虚报了重唱，我跟着多写了三句，被用户一眼看出来。
 
 **识别中途"放弃"时**（《把回忆拼好给你》DJ 版遇到过）：整首送进去，它只认出前 17 秒，后面几乎是空的。办法是按段落切开（`ffmpeg -ss 起 -to 止`），每段只配那几句歌词单独识别，再把时间加回切段起点、拼成一份。几个要注意的地方：
 - 切段开头认出来的第一个字常常是上一句的拖音，要对一下人声响度再决定。
@@ -160,6 +198,7 @@ B=~/project/testt/videos/ClaudeAnimationBase; P=~/project/testt/videos/新项目
 mkdir -p $P/src/scenes $P/assets $P/work/{analysis,secrets} $P/out/check $P/.github/workflows
 cp -r $B/{ANIMATION_GUIDE.md,docs,fonts,lyricfx,package.json,package-lock.json,render.mjs,studio.html,node_modules} $P/
 cp $B/LICENSE $P/LICENSE-ClaudeAnimationBase; cp $B/src/*.js $P/src/; cp $B/tools/ci/render.yml $P/.github/workflows/
+# src/*.js 里已经带了 player.js（本地预览的播放器）。它是所有画风通用的，studio.html 里在场景文件之后引一次就行。
 ```
 
 然后在 `studio.html` 里把 `src/scenes/demo.js` 那一行换成自己的章节文件，音乐拷到 `assets/`。
@@ -245,6 +284,10 @@ ffmpeg -i out/cover/q/t1_00.png -q:v 2 out/cover/歌名_封面_4比3.jpg
 | 漫画版：同一首歌换一个完全不同的故事和画风（换人、换比喻），先出 lookbook 设定页 | "很好，继续" | 第二版就要彻底换掉，设定页这一步保留 |
 | 线稿版：细的手写字（龙藏体）放在画面底部，跟着唱一个个写出来 | "有点看不清，能弄成动效比较强的歌词字幕效果吗" | 字幕要有底或粗描边；整句要有时间读完 |
 | 三种动效字幕（纸条、大字蹦出、动态排版），各出一段对比小样给用户挑 | "这三个格式都超级好"，要求收进资源库 | 收进了 `lyricfx/`；以后新片默认从这三种里挑 |
+| 墨戏版：用纯 canvas 做水墨笔触，画面里塞满家具（床、椅、台灯、桌子、相册） | "这个水墨风格也太丑了吧，这个方案直接推倒吧" | **水墨的门槛在「少」**。一笔下去就是一座山，画面大部分必须留白。我把它当成"用墨画的普通插画"，画成了杂物间。见 `ink/README.md` |
+| 同一首歌连出三版（拼图 / Clawd / 线稿 / 漫画 / 墨戏） | 用户逐个挑，不喜欢的直接换 | 一个故事可以换很多画风试；但**画风要配题材**，选错方向再调参数也救不回来 |
+| studio.html 只有拖动条，自己想看片得写脚本出图 | 用户："为什么不能本地看……打开没有播放按键" | 本地要能**边听边看**。加了 `src/player.js`，以后新项目直接带 |
+| 子代理做长任务中途网关断掉（HTTP 200 返回 HTML） | — | 它的代码留在磁盘上，**重新起一个子代理并让它先读现有代码接手**，比唤醒旧的（旧上下文里还有错数据）干净 |
 
 ## 11. 技术坑速查
 
@@ -267,6 +310,13 @@ ffmpeg -i out/cover/q/t1_00.png -q:v 2 out/cover/歌名_封面_4比3.jpg
 | 漫画版远景人物太小、手像一摞白条、排线太密 | 见 `manga/README.md` 最后一节 |
 | 手写字体把简体字画成繁体（龙藏体的"时"画成"時"） | 换字幕字体前，先用 `fontTools` 查歌词用字在 cmap 里有没有，再出大图逐字看字形；个别字换成别的字体 |
 | 动态排版的字压在人脸、拟声字上 | 先截每句开头、中间、结尾三帧不带字幕的画面找空白处（`LYRIC_FX = { style: 'none' }`），再写 `layout`，见 `lyricfx/README.md` |
+| 传了歌词上下文，识别给的时间是编的 | 段内每字时长中位数 0.04 秒 = 识别自己均分的假值（真的在 0.16～0.36 秒）。改用不带上下文那份当基准，见第 2 节 |
+| 识别把后半句重复列了一遍，看着像唱了两遍 | 同一件事。歌词句数先自己数一遍再动手 |
+| 拍子整体差一整拍 | librosa 的 `beat_track` 粗估可能偏快 2%（实测 117.45 vs 真值 115.19）。用 `tools/music/beatgrid.py` 的周期+相位联合扫描（相位偏差 1ms），别信粗估 |
+| 水墨画面糊成一坨 | 笔与笔之间没有纸色。用 `ink/mo.js` 的 `gap()` 在墨里抠出细缝（露纸色），不是靠描边 |
+| 打开 `studio.html` 没有播放按钮 | 资源库自带的那份只有一根拖动条，是逐帧核对用的。`src/player.js` 补上了播放器（画面按窗口缩放居中，控制条和画面同宽：播放/暂停、时间、进度条、倍速、音乐开关；空格播放，←→ 一秒，Shift+←→ 一帧），音乐读 `PROJECT.audio`。**`studio.html` 里 `.p5Canvas { display: none }` 那行不能删**：水彩引擎画在一张隐藏的 p5 画布上，每帧再合成到 `#out`；删了会多露出一张 1920 宽、靠左的原始画布 |
+| 本地预览一卡一卡、跳帧 | player 只在上一帧画完后才画下一帧，画面比歌慢就跳过中间帧。**这是特意做的**：本地只用来判断内容对不对，成片一律逐帧云渲染，不受影响 |
+| 整页脚本挂掉，报 `X has already been declared` | 项目 `config.js` 里**不能再声明** `W / H / DUR / BEAT / OFF / BPM`——这些 `core.js` 会从 `PROJECT` 和 `?size=` 自己算。重复声明会让整页脚本停在那一行，后面的 `LOOPS` 之类全都没定义，报错信息还跑到别处去 |
 
 ## 12. 资源库里有什么
 
@@ -292,10 +342,15 @@ ffmpeg -i out/cover/q/t1_00.png -q:v 2 out/cover/歌名_封面_4比3.jpg
 - `slip` 纸条贴字（手撕白纸条拍进来、胶带、旧纸条被撕走）、`pop` 大字蹦出（逐字弹出、粗白描边）、`kinetic` 动态排版（分块踩拍砸进空白处、关键词黑底白字、画面跟着抖）；可以混搭。
 - `lyricfx/demo.html` 是示例页：`node render.mjs --page=lyricfx/demo.html --clip --out=out/lyricfx_demo.mp4`。
 
+**水墨笔触（`ink/`，半成品，详见 `ink/README.md`）**
+- `mo.js` 是纯 canvas 的水墨核心：笔触沿路径变宽、边缘用噪声啃出毛边、边缘内侧补积墨（湿边）、一团墨化在纸上、`gap()` 留缝。1080p 一帧 400～600 ms。
+- **只留了核心层，画面设计那一层失败了**（把房间塞满家具 → 用户"太丑了，推倒"）。想做水墨的**先读 `ink/README.md` 开头那段**：水墨的门槛在少，一个镜头只画一样东西，画大，其余全是纸。
+
 **工具**
 - `tools/music/`：`beatgrid.py`（拍网格、候选卡点）、`subs_white.py`（读烧录字幕断句）、`make_check.py`（对拍视频）
-- `tools/lyrics/`：`sep_vocals.py`（分人声）、`volc_asr.py`（火山逐字识别）、`align_lyrics.py`（对回歌词）、`hold_tails.py`（补句尾长音）、`caption_font.py`（字幕字体子集）
+- `tools/lyrics/`：`sep_vocals.py`（分人声）、`volc_asr.py`（火山逐字识别）、`align_two_asr.py`（**两份识别互相校验**，推荐）、`align_lyrics.py`（单份，简单场合）、`hold_tails.py`（补句尾长音）、`caption_font.py`（字幕字体子集）
 - `tools/ci/render.yml`：云端分段渲染模板（两套画风通用）
+- `src/player.js`：**studio.html 的播放器**（画面居中自适应，控制条同宽：播放/暂停、时间、进度条、倍速、音乐开关；空格播放，←→ 一秒，Shift+←→ 一帧）。音乐读项目 `config.js` 里的 `PROJECT.audio`（默认 `assets/music.m4a`），文件不在就静音放画面
 - `render.mjs`：缩略图、逐帧、单帧、整片；`--size` 换画面比例（封面），`--page` 换页面（比如 `--page=manga/studio.html`）
 
 ## 13. 和用户协作的约定

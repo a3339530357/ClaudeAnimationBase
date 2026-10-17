@@ -2,8 +2,9 @@
 >
 > - 两套画风：根目录的水彩 Clawd（原版引擎，加了小桃等角色、特效和字幕），以及 [manga/](manga/README.md) 黑白漫画 + 一抹红（纯 2D canvas，真人比例的动漫人物）
 > - [lyricfx/](lyricfx/README.md)：三种动效歌词字幕（纸条贴字、大字蹦出、动态排版），两套画风通用
+> - [ink/](ink/README.md)：水墨笔触核心（**半成品**，只有笔触层，画面设计那次失败了——先读它的开头）
 > - [extras/](extras/README.md)：以前片子里的现成场景、道具和角色
-> - `tools/music/`：拍网格、对拍视频；`tools/lyrics/`：逐字歌词时间、字幕字体；`tools/ci/`：云端分段渲染模板
+> - `tools/music/`：拍网格、对拍视频；`tools/lyrics/`：逐字歌词时间（`align_two_asr.py` 是主力工具）、字幕字体；`tools/ci/`：云端分段渲染模板
 
 # Claude Animation Base
 
@@ -30,7 +31,9 @@ npm install
 node render.mjs --clip --out=out/video.mp4
 ```
 
-That renders the 11-second demo in [src/scenes/demo.js](src/scenes/demo.js). Open [studio.html](studio.html) in Chrome to scrub through it. Add `?loop=emotions` or `?loop=views` to see the model sheets. If Chrome isn't in a standard location, pass `--chrome=<path>` or set `CHROME_PATH`.
+That renders the 11-second demo in [src/scenes/demo.js](src/scenes/demo.js). Open [studio.html](studio.html) in Chrome to **watch it with the music** — `src/player.js` fits the frame to the window and adds a control bar under it (play/pause, time, scrub bar, speed, music on/off; space = play/pause, ←/→ = one second, Shift+←/→ = one frame). The music comes from `PROJECT.audio` in `src/config.js` (default `assets/music.m4a`); drop a song there and it plays. No music file → it plays silently, no error. Local preview skips frames when a watercolour frame is slow; the final render is always frame-by-frame, so that doesn't affect the output.
+
+Add `?loop=emotions` or `?loop=views` to see the model sheets. If Chrome isn't in a standard location, pass `--chrome=<path>` or set `CHROME_PATH`.
 
 On Linux, `render.mjs` starts Chrome with `--no-sandbox` (Ubuntu 23.10+ blocks Chrome's sandbox in headless use) and also finds a Chromium installed by Playwright. With no GPU at all, add `--soft-gl` to render WebGL in software: slow on watercolour fills, but it works. On a headless Linux machine with an NVIDIA GPU (a cloud or cluster node), add `--gpu-angle=gl-egl` (or `vulkan`); `node gpu_probe.mjs <chrome path>` shows which renderer each set of flags gets.
 
@@ -44,5 +47,6 @@ On Linux, `render.mjs` starts Chrome with `--no-sandbox` (Ubuntu 23.10+ blocks C
 | [src/timeline.js](src/timeline.js) | Shots, loops and the brush-wipe transition |
 | [src/config.js](src/config.js) | Length and tempo |
 | [src/scenes/](src/scenes/) | Your video goes here (the demo is an example) |
+| [src/player.js](src/player.js) | The studio player: play/pause, scrub, speed, music on/off |
 | [render.mjs](render.mjs) | Headless renderer: contact sheets, frame strips, crops, stills, MP4 |
 | [docs/](docs/) | Model sheets: [emotions](docs/emotions.jpg) (also [animated](docs/emotions.webp)) and [views, motion and hats](docs/views.jpg) |

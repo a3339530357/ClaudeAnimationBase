@@ -2,3 +2,8 @@ node_modules
 out/
 __pycache__/
 .venv*/
+
+# 原曲不进仓库（studio.html 的播放器要它，但它是版权音乐，只在本机放着听）
+assets/*.m4a
+assets/*.mp3
+assets/*.wav

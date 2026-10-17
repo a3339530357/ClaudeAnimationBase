@@ -19,6 +19,7 @@
 //   fonts / size / y  各样式的字体、字号、纸条和大字的中心高度（默认离底边 1/10）
 //   ink / paper / dim  墨色、纸色、纸条上没唱到的字的颜色
 //   lastUntil 最后一句停到什么时候（默认唱完再停 1.2 秒）
+//   ripDown   true = 纸条退场时往下撕出画（默认往上撕，会从画面中间飞过去）
 //   boil      线条抖动的节拍，(t) => 整数，默认每秒换 10 次形状（和手绘动画的「线条沸腾」一样）
 (function () {
   const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
@@ -89,7 +90,8 @@
     const sc = 1 + .28 * (1 - eIn(kIn));
     ctx.save();
     ctx.globalAlpha = clamp(kIn * 3);
-    ctx.translate(cx + side * kOut * 260, cy - kOut * 760);
+    // o.ripDown：旧纸条往下撕、直接出画（主戏在画面上半时用，免得旧纸条从画面中间飞过去抢视线）
+    ctx.translate(cx + side * kOut * (o.ripDown ? 120 : 260), o.ripDown ? cy + kOut * 360 : cy - kOut * 760);
     ctx.rotate((r0 - side * 6 * (1 - kIn) + side * kOut * 28) * Math.PI / 180);
     ctx.scale(sc * (1 + .06 * sq), sc * (1 - .1 * sq));
     // 纸：上下两条边是撕出来的锯齿，左右直边

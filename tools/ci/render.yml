@@ -104,7 +104,8 @@ jobs:
           gpg --batch --quiet --passphrase-file key.txt -o music.m4a -d assets/music.m4a.gpg && rm key.txt
           A=${{ needs.plan.outputs.a }}
           # the video runs past the end of the song: pad the audio with silence to the video's length
-          ffmpeg -y -loglevel error -i video_silent.mp4 -ss $A -i music.m4a -map 0:v -map 1:a -c:v copy -af apad -c:a aac -b:a 192k -shortest -movflags +faststart mv.mp4
+          # 原曲常常压到 0 dB：先削峰到 -2 dB 再编码，不然 AAC 编码会冒出 0 dB 爆音（-1 dB 不够，实测编码后又顶回 0）
+          ffmpeg -y -loglevel error -i video_silent.mp4 -ss $A -i music.m4a -map 0:v -map 1:a -c:v copy -af "alimiter=limit=0.79:level=disabled,apad" -c:a aac -b:a 192k -shortest -movflags +faststart mv.mp4
           rm music.m4a
           ffprobe -v error -show_entries format=duration:stream=codec_name,width,height,r_frame_rate -of compact mv.mp4
       - uses: actions/upload-artifact@v4
