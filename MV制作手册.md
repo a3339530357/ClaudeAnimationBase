@@ -362,6 +362,7 @@ ffmpeg -i out/cover/q/t1_00.png -q:v 2 out/cover/歌名_封面_4比3.jpg
 | 整首对齐歌词，前面的句子被配到最后一遍副歌上（差 146 秒） | difflib 先找最长的相同片段，副歌重复时会配错。改用按顺序对齐：`cmp_lrc.py`、`align_lyrics.py` 都已经改好 |
 | 抒情歌量出两倍速；小节线两次运行差两拍 | 看一句歌词占几拍，`--bpm` 给一半；小节线用 `beatgrid.py --downbeat chroma` |
 | 本地 `--png/--frames` 开 6 个 worker，两分钟一帧没出 | 浏览器排队启动，每个约 16 秒，`--png` 结束才打印。没卡，别停 |
+| 下载云端成片（`gh run download`）好几分钟没动静，看着像卡住 | 没卡，是慢：单连接只有约 48 KB/s（文件在 `*.blob.core.windows.net`），`gh` 下完才显示。先拿跳转地址，再分 8 段并行下，约 1.3 MB/s：`LOC=$(curl -sS -H "Authorization: Bearer $(gh auth token)" -o /dev/null -w '%{redirect_url}' https://api.github.com/repos/<仓库>/actions/artifacts/<id>/zip)`，然后 `curl -r 起-止 -o p$i "$LOC" &` 分段，`cat p0..p7 > video.zip`。artifact 的 id 和大小：`gh api repos/<仓库>/actions/runs/<run>/artifacts` |
 | 分身各写一章，函数名互相覆盖 | 所有章节文件共用全局作用域：顶层名字加章节前缀；`C` 是调色板，前缀写成 `C_xxx` |
 | 公共家具人坐着够不到 | 设定图里给家具配一个坐着的人试一下（她的书桌原来高 44 像素，改成 24） |
 | 整页脚本挂掉，报 `X has already been declared` | 项目 `config.js` 里**不能再声明** `W / H / DUR / BEAT / OFF / BPM`——这些 `core.js` 会从 `PROJECT` 和 `?size=` 自己算。重复声明会让整页脚本停在那一行，后面的 `LOOPS` 之类全都没定义，报错信息还跑到别处去 |

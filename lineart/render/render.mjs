@@ -14,7 +14,7 @@ const ly = arg('ly', '');   // 歌词样式（见 js/karaoke.js），不给就�
 const segDir = path.join(path.dirname(out), '_segs_' + path.basename(out, '.mp4'));
 fs.rmSync(segDir, { recursive: true, force: true }); fs.mkdirSync(segDir, { recursive: true });
 
-const { srv, url: base } = await serve(), url = base + (ly ? `?ly=${ly}` : '');
+const { srv, url: base } = await serve(), url = base + '?clean=1' + (ly ? `&ly=${ly}` : '');   // clean：不要播放条
 const total = f1 - f0, per = Math.ceil(total / workers), started = Date.now();
 let done = 0;
 // 每个任务单独开一个 Chrome：各自有绘图进程，才能真正并行
