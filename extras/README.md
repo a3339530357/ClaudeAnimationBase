@@ -19,4 +19,4 @@
 ## 没收进来的画风
 
 - 剪影 + 拼图转场（《把回忆拼好给你》拼图版）：`~/project/testt/videos/pinhui-mv/`，`src/sil.js` 剪影人物，`src/compose.js` 拼图合成
-- SVG 线稿、Q 版大头小人（《中华五千年》）：`~/project/testt/videos/china-5000-anim/`，自己的一套渲染脚本
+- SVG 线稿、Q 版大头小人（《中华五千年》）：`~/project/testt/videos/china-5000-anim/`，自己的一套渲染脚本。**已收进 `lineart/`**（经《拼回忆》线稿版、《去年夏天》改过，带六个新角色），新片用 `lineart/`

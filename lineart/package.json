@@ -1,0 +1,10 @@
+{
+  "name": "lineart-kit",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SVG 线稿引擎（五千年 → 拼回忆线稿版 → 去年夏天）",
+  "type": "commonjs",
+  "dependencies": {
+    "playwright-core": "^1.64.0"
+  }
+}
