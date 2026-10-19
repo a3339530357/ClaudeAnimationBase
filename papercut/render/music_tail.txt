@@ -1,0 +1,8 @@
+[1:a]asplit=2[m][e];
+[m]afade=t=out:st=42.56:d=0.049,apad=whole_dur=44.6[dry];
+[e]atrim=start=42.259:end=42.600,asetpts=PTS-STARTPTS,afade=t=in:d=0.008,afade=t=out:st=0.32:d=0.02,asplit=4[e1][e2][e3][e4];
+[e1]lowpass=f=4200,volume=0.42,adelay=delays=42685:all=1[d1];
+[e2]lowpass=f=2500,volume=0.26,adelay=delays=43111:all=1[d2];
+[e3]lowpass=f=1500,volume=0.15,adelay=delays=43537:all=1[d3];
+[e4]lowpass=f=850,volume=0.08,adelay=delays=43963:all=1[d4];
+[dry][d1][d2][d3][d4]amix=inputs=5:normalize=0:duration=first,afade=t=out:st=44.25:d=0.35,alimiter=limit=0.97:level=0,atrim=end=44.6[full]

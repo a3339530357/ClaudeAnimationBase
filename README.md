@@ -1,6 +1,6 @@
 > 做卡点 MV 之前先读 [MV制作手册.md](MV制作手册.md)（流程、经验、踩坑记录、资源清单）。这份资源库在原版（下面英文部分）的基础上加了：
 >
-> - 四套画风：根目录的水彩 Clawd（原版引擎，加了小桃等角色、特效和字幕）、[manga/](manga/README.md) 黑白漫画 + 一抹红（纯 2D canvas，真人比例的动漫人物），[pixel/](pixel/README.md) 像素（480×270 调色板画布放大 4 倍，提线木偶小人，像素字体歌词；最快），以及 [lineart/](lineart/README.md) SVG 线稿（米黄纸墨线 Q 版小人，线条会抖、一笔笔画出来；六个现成角色，双击 `lineart/cast.html` 看）
+> - 五套画风：根目录的水彩 Clawd（原版引擎，加了小桃等角色、特效和字幕）、[manga/](manga/README.md) 黑白漫画 + 一抹红（纯 2D canvas，真人比例的动漫人物），[pixel/](pixel/README.md) 像素（480×270 调色板画布放大 4 倍，提线木偶小人，像素字体歌词；最快），[lineart/](lineart/README.md) SVG 线稿（米黄纸墨线 Q 版小人，线条会抖、一笔笔画出来；六个现成角色，双击 `lineart/cast.html` 看），以及 [papercut/](papercut/README.md) 剪纸立体书（canvas 彩纸、剪刀毛边、定格抖动，东西按拍子立起来折回去；示例是《最美的期待》整片）
 > - [lyricfx/](lyricfx/README.md)：三种动效歌词字幕（纸条贴字、大字蹦出、动态排版），两套画风通用
 > - [ink/](ink/README.md)：水墨笔触核心（**半成品**，只有笔触层，画面设计那次失败了——先读它的开头）
 > - [extras/](extras/README.md)：以前片子里的现成场景、道具和角色

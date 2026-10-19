@@ -1,0 +1,10 @@
+{
+  "name": "papercut-kit",
+  "version": "1.0.0",
+  "private": true,
+  "description": "剪纸画风：canvas 剪纸立体书动画（示例是《最美的期待》剪纸 MV，月芽和阿晴）",
+  "type": "commonjs",
+  "dependencies": {
+    "playwright-core": "^1.64.0"
+  }
+}
