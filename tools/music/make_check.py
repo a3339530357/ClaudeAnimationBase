@@ -10,7 +10,9 @@
 #       "cues":     [[拍号, "卡点名", "big|act|vis"], ...],             big = 全屏白闪+大叮，act = 黄框+小叮，vis = 只有文字
 #       "riser":    [开始秒, 结束秒] }                                   (可选) 蓄力条
 # 依赖: numpy；ffmpeg 要带 libass；字体 Noto Sans CJK SC。
-import json, subprocess, sys, wave
+# 不是 4 拍的小节：timing.json 的 beat 里写 "odd_bars": [[起拍, 拍数], ...]（《多远都要在一起》桥段第 188 拍是个 2 拍的小节，
+#   之后小节线整体后移 2 拍："odd_bars": [[188, 2]]）。不写就是每 4 拍一小节。
+import bisect, json, subprocess, sys, wave
 import numpy as np
 
 timing_p, music_p, out = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -20,6 +22,11 @@ P, OFF, DUR = TM['beat']['period'], TM['beat']['offset'], TM['duration']
 bt = lambda n: OFF + n * P
 NB = int((DUR - OFF) / P) + 1                       # 拍数(含最后半拍)
 TM.setdefault('lyrics', [])
+ODD = {b: L for b, L in TM['beat'].get('odd_bars', [])}
+BAR0 = [0]
+while BAR0[-1] < NB + 8: BAR0.append(BAR0[-1] + ODD.get(BAR0[-1], 4))
+def barpos(n):                                       # → (第几小节 从 0 起, 小节内第几拍 从 0 起)
+    k = bisect.bisect_right(BAR0, n) - 1; return k, n - BAR0[k]
 
 COLS = ['#C8642A', '#2E6FB7', '#B8901C', '#3A8F6B', '#8E44AD', '#2C7A7B', '#C2457A', '#A0522D']
 SEC = [tuple(s) for s in PL.get('sections', [[b, f'第 {b // 32 + 1} 段'] for b in range(0, NB, 32)])]
@@ -48,7 +55,7 @@ def put(sig, t):
     i = int(round(t * SR)); j = min(len(clk), i + len(sig))
     if 0 <= i < len(clk): clk[i:j] += sig[:j - i]
 for n in range(NB):
-    put(DOWN if n % 4 == 0 else TICK, bt(n))
+    put(DOWN if barpos(n)[1] == 0 else TICK, bt(n))
 for n, _, lv in CUES:
     if lv == 'act': put(DING, bt(n))
     if lv == 'big': put(BIG, bt(n))
@@ -91,10 +98,10 @@ for b, name in SEC:
     ev(10, 0 if b == 0 else bt(b), t1, 'Small', f'{{\\an9\\pos(1255,22)}}{name}')
 # 每拍闪块 + 小节/拍计数
 for n in range(NB):
-    t0, t1 = bt(n), min(END, bt(n + 1)); down = n % 4 == 0
+    t0, t1 = bt(n), min(END, bt(n + 1)); bk, bp = barpos(n); down = bp == 0
     s = 72 if down else 46; c = '#FF5A36' if down else '#FFFFFF'
     draw(20, t0, min(t1, t0 + .13), f'm 0 0 l {s} 0 {s} {s} 0 {s}', bgr(c), pos=(60 - s//2, 58 - s//2))
-    ev(20, t0, t1, 'Small', f'{{\\an4\\pos(115,58)}}小节 {n//4 + 1} · 拍 {n%4 + 1}   (第 {n} 拍)')
+    ev(20, t0, t1, 'Small', f'{{\\an4\\pos(115,58)}}小节 {bk + 1} · 拍 {bp + 1}   (第 {n} 拍)')
 # 卡点
 for k, (n, name, lv) in enumerate(CUES):
     t0 = bt(n); te = min(t0 + .75, bt(CUES[k + 1][0]) if k + 1 < len(CUES) else END)
