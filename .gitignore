@@ -7,3 +7,6 @@ __pycache__/
 assets/*.m4a
 assets/*.mp3
 assets/*.wav
+
+# 分离模型（audio-separator 下载的权重，几百 MB 一个）
+sep_models/

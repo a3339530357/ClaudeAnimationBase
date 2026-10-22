@@ -11,7 +11,7 @@
 | 步骤 | 做什么 | 交付 / 停下来 |
 |---|---|---|
 | 1 | 从视频里提取音乐 | |
-| 2 | 量拍子、找卡点；歌词用**逐字识别**拿时间（不抄字幕；用户给了 LRC 就用识别核对 LRC）→ `timing.json` | |
+| 2 | 量拍子、找卡点（**先看各段速度一不一样**，漂的话逐拍跟踪）；歌词用**逐字识别**拿时间（不抄字幕；用户给了 LRC 就用识别核对 LRC）→ `timing.json` | |
 | 3 | 出**对拍视频** | ✋ 给用户看，确认卡点准 |
 | 4 | **两轮提问**定方向（每题带推荐项）；故事、画风拿不准时，每个方案出一条**短样片**（开头 4～6 秒 + 高潮前后约 2 秒） | ✋ 用户选 |
 | 5 | 写分镜 `STORYBOARD.md`，每个动作标第几拍 | ✋ 用户过目 |
@@ -71,6 +71,21 @@ work/.venv/bin/python -I tools/music/beatgrid.py assets/music.m4a --drums 0:17,3
 - **小节第一拍**：默认按"4 拍里底鼓最重的一拍"定，抒情歌底鼓弱、一小节两下差不多重时，两次运行能差两拍。加 `--downbeat chroma` 改按"和弦变化最大的一拍"定（脚本会把两种都打印出来，不一致时提示），再用对拍视频听。
 - **不是 4 拍的小节**：《多远都要在一起》桥段第 188 拍是个只有 2 拍的短小节，之后小节线整体后移 2 拍（`n % 4 == 2` 才是小节第一拍）。漏掉的话最后一遍副歌所有卡点都差半小节。找法：拍子速度恒定、但某段之后和弦变化总落在“第 3 拍”上，就逐段统计和弦变化的位置。在 timing.json 的 `beat` 里写 `"odd_bars": [[188, 2]]`，对拍视频（`make_check.py`）会照着数小节；代码里写一个 `barPos(n)` 算小节内第几拍。
 
+**速度会漂的歌：逐拍跟踪**（《我怀念的》，2026-10）。这首没跟节拍器录，速度从 133 BPM 一路漂到 142，前 112 秒又只有钢琴、没有鼓。我先信了固定公式，在错的网格上分析了好几轮小节线，得出的“短小节”大多是漂移造成的假象。用户问“这一次为什么这么久”。
+
+- **先看速度稳不稳**：`beatgrid.py` 现在会每 30 秒一段各量一次速度，各段差超过 1% 时提示改用逐拍跟踪。看到提示就别往下用公式了。
+- **怎么跟**：`sep_vocals.py` 分离时会顺手存下鼓、贝斯、其他（伴奏）几条音轨。有鼓的段用鼓轨跟拍，没鼓的段用伴奏跟拍，在交界处拼起来再平滑，写进 timing.json 的 `beat.times`（每一拍一个时间）。`make_check.py` 认 `times`；项目里的 `bt(n)` 也要改成查这张表。
+
+```bash
+$B/.venv-sep/bin/python -I $B/tools/lyrics/sep_vocals.py assets/music.mp3 work/lyrics/vocals.wav      # 顺带存 drums/bass/other/acc.wav
+work/.venv/bin/python -I tools/music/beattrack.py assets/music.mp3 work/lyrics --bpm 140 --half --out work/analysis/timing.json   # 先看诊断表
+work/.venv/bin/python -I tools/music/beattrack.py assets/music.mp3 work/lyrics --bpm 140 --half --bars work/analysis/bars.json --out work/analysis/timing.json
+```
+
+- **怎么验证**：拿几遍副歌里同一句歌词，看它们在网格上相差几拍。网格对了，这个数几乎是整数（±0.1 拍）；固定公式那次是 163.4、162.4 这样一路变。脚本读到 timing.json 里的歌词就会自动打印。所以先跑 `cmp_lrc.py --timing` 或 `align_lyrics.py` 把歌词写进去，再跑 `beattrack.py`。字数相同、六成字一样的平行句（“我问为什么 / 想问为什么”）也会拿来比，所以主歌也能核对。看“余 8”那一列：同一组里有一对和别的对差 1，就是这两句之间多跟或少跟了一拍。以前整首一起跟的时候，在前奏进主歌那里出过一次这种错，所以现在改成按段单独跟。
+- **小节线**：诊断表每 16 拍一行。镲片落在奇数拍还是偶数拍，说明半速记拍时取哪一边；贝斯换音最多、底鼓最重的位置（n%8）一般就是小节第一拍。没鼓没贝斯的段只能靠歌词：同一句在几遍里离小节线的距离应该一样。定好以后写成小节起点列表 `bars.json`（细网格拍号），用 `--bars` 重写。
+- **相差“8 的倍数 + 1”**（细网格）= 中间有个地方音乐自己拖了半拍，那一小节在 `bars.json` 里写成 9 格，拍表里那一小节的最后一拍会长 1.5 倍。**相差“+ 4”** = 有一个 2 拍的短小节，会自动写进 `odd_bars`。《我怀念的》这两种都遇到了。
+
 **歌词**：文字以用户给的为准。**时间不能照抄原视频的烧录字幕**：字幕本身常常偏晚，《坏女孩》实测平均比实际开唱晚 0.56 秒（0.25～0.99），导歌、副歌提前 2～3 拍抢进来唱的句子最严重；而且句内是匀速分配的，每个字还差 0.3 秒左右。照它卡点，整片会一直慢半拍。
 
 **用户给了 LRC 时（《写不完的温柔》验证过）**：LRC 的句首通常是准的，但要核对。分人声、识别两遍（带歌词、不带歌词）之后：
@@ -86,16 +101,24 @@ python3 -I tools/lyrics/cmp_lrc.py 歌.lrc work/lyrics/asr_plain.json work/lyric
 
 **首选：逐字识别（《坏女孩》验证过）**，拿到每个字的开始和结束时间：
 
-1. Demucs 把人声单独分离出来（`sep_vocals.py`）。
+1. 把人声单独分离出来（`sep_vocals.py`，audio-separator + RoFormer，显卡跑）。
 2. 人声交给火山"录音文件识别标准版"（`volc.seedasr.auc`，新版控制台 API Key，音频 base64 直传，不用公网地址）。**一定要把歌词原文作为参考传进去**：`volc_asr.py --lang zh-CN --ctx 歌词.txt`。传了歌词，错字从 8 个降到 1 个；加热词、开 enable_music_fc 反而错得更多，别加。
 3. 对回用户给的歌词（`align_lyrics.py`）：认错的字按位置借时间，多出的语气词丢掉，漏掉的字插值。
 4. 用人声响度补上句尾长音（`hold_tails.py`）。
 
+**分离模型（2026-10-22 换的）**：原来用 Demucs 的 htdemucs（2023 年的，官方仓库已归档，人声 SDR 9.9），用户说"太太太太老了"。现在用 `audio-separator`（UVR 背后那套，https://github.com/nomadkaraoke/python-audio-separator），在 4060 显卡上跑两个模型：
+- 人声：Kim 的 MelBand Roformer（`vocals_mel_band_roformer.ckpt`，人声 SDR 12.6）。
+- 鼓、贝斯、吉他、钢琴、其他：jarredou 的 BS Roformer SW（`BS-Roformer-SW.ckpt`）。
+- 速度：开半精度（默认开着，和全精度的差异比 71 dB，听不出来），一分钟音乐两个模型一共 24 秒左右。整首 4～5 分钟的歌两分钟上下。
+- 效果：《我怀念的》用新人声识别，多认出 4 个字，"编出来的段"从 1 个降到 0；老模型认晚 0.5 秒、要手动修的「我放手」，这次直接对了。用新鼓轨跟拍，清晰度从 4.7 升到 5.3。
+- 想换更新的模型：`$B/.venv-sep/bin/audio-separator -l --list_filter vocals` 列出能直接下载的模型和分数，改 `sep_vocals.py` 开头的 `VOCAL_MODEL` / `STEM_MODEL`。排行榜看 https://mvsep.com/quality_checker/multisong_leaderboard?sort=vocals （最前面那两个是 MVSEP 自家的，只能在线付费用，没有权重）。
+- 坑：audio-separator 默认把模型下载到 `/tmp`，脚本里已改成资源库的 `sep_models/`；0.47 版少声明了 `audioread` 依赖，要自己装；底层库会往 `TMPDIR` 写一个 `.ses` 小文件，所以运行时把 `TMPDIR` 指到项目的 `work/t`。
+
 脚本在 `tools/lyrics/`，用法写在每个脚本开头。火山语音的 Key 文件在 `~/project/testt/videos/huainvhai-mv/work/secrets/volc_speech_key.txt`，拷到新项目的 `work/secrets/`（不进 git）。歌词存成 `歌词.txt`，一行一句。
 
 ```bash
-# 人声分离：单独一个约 1.3 GB 的环境，装法见 sep_vocals.py 开头
-work/.venv-sep/bin/python -I tools/lyrics/sep_vocals.py assets/music.m4a work/lyrics/vocals.wav
+# 人声分离：资源库根目录的 .venv-sep（约 6 GB，装法见 sep_vocals.py 开头），显卡跑。顺带在同一目录存 drums/bass/other/acc.wav
+TMPDIR=$PWD/work/t $B/.venv-sep/bin/python -I $B/tools/lyrics/sep_vocals.py assets/music.m4a work/lyrics/vocals.wav
 ffmpeg -i work/lyrics/vocals.wav -ac 1 -ar 16000 -c:a pcm_s16le work/lyrics/vocals16k.wav
 # 识别两次：带歌词的用来对字，不带歌词的用来判断长音（带了歌词会把语气词抹掉）
 python3 -I tools/lyrics/volc_asr.py work/secrets/volc_speech_key.txt work/lyrics/vocals16k.wav work/lyrics/asr_ctx.json --lang zh-CN --ctx 歌词.txt
@@ -152,7 +175,8 @@ work/.venv/bin/python -I tools/music/make_check.py work/analysis/timing.json ass
 
 - 出两条视频：**带节拍器**的用来检查拍子准不准，**只有原曲**的用来感受节奏。
 - 画面元素：每个镜头一块底色，每拍左上角闪一下，大卡点全屏闪白加提示音，小卡点出黄框，蓄力段有进度条，歌词按卡拉OK方式点亮，每帧有时间码。
-- `plan.json` 写分镜的镜头、段落和卡点（格式见脚本开头）；不给就按每 8 拍一块。
+- `plan.json` 写分镜的镜头、段落和卡点（格式见脚本开头）；不给就按每 8 拍一块。有 2 拍短小节或拖长的小节时，自己按小节写 `shots`，别用默认的每 8 拍一块（会错开）。
+- timing.json 的 `beat` 里有 `times`（逐拍时间表）就按表走，没有才用 `offset + n × period`。
 - **用户对这一步评价很高**（"做的非常非常好"）。代价最小，能最早发现卡点不准。
 
 ## 4. 头脑风暴：两轮提问
@@ -377,6 +401,9 @@ ffmpeg -i out/cover/q/t1_00.png -q:v 2 out/cover/歌名_封面_4比3.jpg
 | 用户双击打开 studio.html，像素字体变成系统字体 | Chrome 不让 file:// 页面加载 @font-face 字体文件；`render.mjs` 带 `--allow-file-access-from-files`，所以自查时看不出来。把字体做成 data URL 嵌进脚本（`pixel/tools/pixel_font.py` 生成 `src/font_data.js`），交付前用 `tools/check/plain_open.mjs` 模拟用户打开 |
 | 整首对齐歌词，前面的句子被配到最后一遍副歌上（差 146 秒） | difflib 先找最长的相同片段，副歌重复时会配错。改用按顺序对齐：`cmp_lrc.py`、`align_lyrics.py` 都已经改好 |
 | 抒情歌量出两倍速；小节线两次运行差两拍 | 看一句歌词占几拍，`--bpm` 给一半；小节线用 `beatgrid.py --downbeat chroma` |
+| 几遍副歌里同一句歌词相差 163.4、162.4 拍，一路在变；小节线前后半首对不上 | 速度在漂（没跟节拍器录），固定公式不能用。`beatgrid.py` 分段量速度会提示；改用 `beattrack.py` 逐拍跟踪，见第 2 节。前半首没鼓的话，鼓轨跟不了，用伴奏跟 |
+| 鼓、贝斯为了跟拍又分离一遍，白等 3 分钟 | `sep_vocals.py` 现在一次存齐 drums/bass/other/acc |
+| 人声分离用的 Demucs 太老（2023 年，仓库已归档） | 换成 audio-separator + RoFormer（显卡跑），见第 2 节"分离模型" |
 | 本地 `--png/--frames` 开 6 个 worker，两分钟一帧没出 | 浏览器排队启动，每个约 16 秒，`--png` 结束才打印。没卡，别停 |
 | 下载云端成片（`gh run download`）好几分钟没动静，看着像卡住 | 没卡，是慢：单连接只有约 48 KB/s（文件在 `*.blob.core.windows.net`），`gh` 下完才显示。先拿跳转地址，再分 8 段并行下，约 1.3 MB/s：`LOC=$(curl -sS -H "Authorization: Bearer $(gh auth token)" -o /dev/null -w '%{redirect_url}' https://api.github.com/repos/<仓库>/actions/artifacts/<id>/zip)`，然后 `curl -r 起-止 -o p$i "$LOC" &` 分段，`cat p0..p7 > video.zip`。artifact 的 id 和大小：`gh api repos/<仓库>/actions/runs/<run>/artifacts` |
 | 分身各写一章，函数名互相覆盖 | 所有章节文件共用全局作用域：顶层名字加章节前缀；`C` 是调色板，前缀写成 `C_xxx` |
@@ -436,8 +463,8 @@ ffmpeg -i out/cover/q/t1_00.png -q:v 2 out/cover/歌名_封面_4比3.jpg
 - **只留了核心层，画面设计那一层失败了**（把房间塞满家具 → 用户"太丑了，推倒"）。想做水墨的**先读 `ink/README.md` 开头那段**：水墨的门槛在少，一个镜头只画一样东西，画大，其余全是纸。
 
 **工具**
-- `tools/music/`：`beatgrid.py`（拍网格、候选卡点；`--downbeat chroma` 按和弦定小节线）、`make_check.py`（对拍视频；timing.json 里写 `odd_bars` 支持不是 4 拍的小节）、`subs_white.py`（读烧录字幕断句）
-- `tools/lyrics/`：`sep_vocals.py`（分人声）、`volc_asr.py`（火山逐字识别）、**`cmp_lrc.py`（用户给了 LRC：核对 + 写进 timing.json，《写不完的温柔》验证过）**、`align_lyrics.py`（单份识别对回歌词，已改成按顺序对齐）、`align_two_asr.py`（两份识别互相校验，10-16 写的，没再验证过）、`hold_tails.py`（补句尾长音）、`caption_font.py`（字幕字体子集）
+- `tools/music/`：`beatgrid.py`（拍网格、候选卡点；`--downbeat chroma` 按和弦定小节线；分段量速度，漂了会提示）、**`beattrack.py`（速度会漂的歌：鼓轨和伴奏逐拍跟踪 → `beat.times`，带小节线诊断和歌词核对，《我怀念的》验证过）**、`make_check.py`（对拍视频；`odd_bars` 支持不是 4 拍的小节，`times` 支持逐拍时间表）、`subs_white.py`（读烧录字幕断句）
+- `tools/lyrics/`：`sep_vocals.py`（分人声，顺带存鼓、贝斯、伴奏；audio-separator + RoFormer，显卡跑）、`volc_asr.py`（火山逐字识别）、**`cmp_lrc.py`（用户给了 LRC：核对 + 写进 timing.json，《写不完的温柔》验证过）**、`align_lyrics.py`（单份识别对回歌词，已改成按顺序对齐）、`align_two_asr.py`（两份识别互相校验，10-16 写的，没再验证过）、`hold_tails.py`（补句尾长音）、`caption_font.py`（字幕字体子集）
 - `tools/ci/render.yml`：云端分段渲染模板（三套画风通用；原曲 m4a、mp3 都认）；`tools/ci/splice_range.sh`：只重渲一段后按帧号接回整片
 - `tools/check/plain_open.mjs`：像用户那样直接打开 studio.html（不带特殊权限），截图并报告字体加载了没有
 - `tools/check/smoke.mjs`：**只查报错不出图**，按步长把整片（或一段）每帧画一遍，打印报错、最慢的帧，`--shots` 列镜头表。分身并行写长片时，每段写完跑它

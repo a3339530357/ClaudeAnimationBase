@@ -51,6 +51,24 @@ print(f'\n拟合: 周期 {P:.5f}s ({60 / P:.2f} BPM)，相位 {ph:.4f}s')
 for a, b in segs:   # 各段相位漂不漂
     bp = max(np.arange(0, P, .002), key=lambda q: score(P, q, a, b)); d = (bp - ph + P / 2) % P - P / 2
     print(f'  {a:5.1f}–{b:5.1f}s 段内最佳相位偏差 {d * 1000:+4.0f} ms' + ('   ← 偏大，这段可能变速或没鼓' if abs(d) > .03 else ''))
+# 速度稳不稳: 每 30 秒一段各自拟合周期（全频起音，没鼓的段也有钢琴、吉他的起音）。
+# 《我怀念的》没跟节拍器录，133 → 142 BPM 一路漂，前 112 秒还没鼓；固定公式越走越偏，我在错的网格上分析了好几轮小节线。
+onA = librosa.onset.onset_strength(S=librosa.amplitude_to_db(S), sr=sr, hop_length=hop)
+def wscore(P_, ph_, lo, hi):
+    ts = np.arange(lo + ph_, hi, P_); return onA[np.clip(np.round(ts * sr / hop).astype(int), 0, len(onA) - 1)].mean()
+loc = []
+print('\n每 30 秒一段各量一次速度（清晰度 = 最好相位比中位相位强多少，1.3 以下的段不作数）:')
+for a in np.arange(0, max(1, dur - 15), 30):
+    b = min(dur, a + 30); bw = (0, P, 0)
+    for P_ in np.arange(P * .97, P * 1.03, .0005):
+        for ph_ in np.arange(0, P_, .008):
+            s = wscore(P_, ph_, a, b)
+            if s > bw[0]: bw = (s, P_, ph_)
+    cl = bw[0] / np.median([wscore(bw[1], q, a, b) for q in np.arange(0, bw[1], .008)])
+    print(f'  {a:5.0f}–{b:5.0f}s  {60 / bw[1]:7.2f} BPM  清晰度 {cl:4.2f}')
+    if cl >= 1.3: loc.append(60 / bw[1])
+if len(loc) >= 2 and (max(loc) - min(loc)) / np.median(loc) > .01:
+    print(f'  ← 各段速度从 {min(loc):.1f} 到 {max(loc):.1f} BPM，差超过 1%：速度在漂，别用下面的固定公式，改用 tools/music/beattrack.py 逐拍跟踪')
 
 n = np.arange(int((dur - ph) / P) + 1); bts = ph + n * P
 idx = np.clip(np.round(bts * sr / hop).astype(int), 0, len(on) - 1)

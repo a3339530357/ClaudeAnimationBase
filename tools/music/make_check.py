@@ -10,6 +10,7 @@
 #       "cues":     [[拍号, "卡点名", "big|act|vis"], ...],             big = 全屏白闪+大叮，act = 黄框+小叮，vis = 只有文字
 #       "riser":    [开始秒, 结束秒] }                                   (可选) 蓄力条
 # 依赖: numpy；ffmpeg 要带 libass；字体 Noto Sans CJK SC。
+# 速度会漂的歌：timing.json 的 beat 里给 times（逐拍时间表，tools/music/beattrack.py 写），就不用 offset + n × period 的公式。
 # 不是 4 拍的小节：timing.json 的 beat 里写 "odd_bars": [[起拍, 拍数], ...]（《多远都要在一起》桥段第 188 拍是个 2 拍的小节，
 #   之后小节线整体后移 2 拍："odd_bars": [[188, 2]]）。不写就是每 4 拍一小节。
 import bisect, json, subprocess, sys, wave
@@ -19,8 +20,13 @@ timing_p, music_p, out = sys.argv[1], sys.argv[2], sys.argv[3]
 TM = json.load(open(timing_p, encoding='utf-8'))
 PL = json.load(open(sys.argv[4], encoding='utf-8')) if len(sys.argv) > 4 else {}
 P, OFF, DUR = TM['beat']['period'], TM['beat']['offset'], TM['duration']
-bt = lambda n: OFF + n * P
-NB = int((DUR - OFF) / P) + 1                       # 拍数(含最后半拍)
+BT = TM['beat'].get('times')                        # 速度会漂的歌：逐拍时间表（beattrack.py 写的，第 n 拍 = times[n]），表外按两头的拍长外推
+def bt(n):
+    if not BT: return OFF + n * P
+    if n <= 0: return BT[0] + n * (BT[1] - BT[0])
+    if n >= len(BT) - 1: return BT[-1] + (n - len(BT) + 1) * (BT[-1] - BT[-2])
+    i = int(n); return BT[i] + (n - i) * (BT[i + 1] - BT[i])
+NB = len(BT) if BT else int((DUR - OFF) / P) + 1    # 拍数(含最后半拍)
 TM.setdefault('lyrics', [])
 ODD = {b: L for b, L in TM['beat'].get('odd_bars', [])}
 BAR0 = [0]
